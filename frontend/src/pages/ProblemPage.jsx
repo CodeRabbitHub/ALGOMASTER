@@ -548,7 +548,7 @@ export default function ProblemPage() {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [code, elapsedSecs])
+  }, [handleRun, handleSubmit])
 
   // Timer + AI — reset when switching problems
   useEffect(() => {
@@ -626,7 +626,7 @@ export default function ProblemPage() {
     }
   }
 
-  const handleRun = async () => {
+  const handleRun = useCallback(async () => {
     setRunning(true)
     setResult(null)
     setVerdict(null)
@@ -640,9 +640,9 @@ export default function ProblemPage() {
     } finally {
       setRunning(false)
     }
-  }
+  }, [id, code, elapsedSecs])
 
-  const handleSubmit = async () => {
+  const handleSubmit = useCallback(async () => {
     setRunning(true)
     setResult(null)
     setVerdict(null)
@@ -656,7 +656,7 @@ export default function ProblemPage() {
     } finally {
       setRunning(false)
     }
-  }
+  }, [id, code, elapsedSecs])
 
   const handleStar = async () => {
     await starProblem(id)

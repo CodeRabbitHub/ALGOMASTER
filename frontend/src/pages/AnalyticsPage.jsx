@@ -15,6 +15,8 @@ import {
   getOverviewStats, getDailyStats, getTopicMastery,
   getErrorPatterns, getAIInsight, getAIHistory,
 } from '../api/client'
+import api from '../api/client'
+import { useAuth } from '../contexts/AuthContext'
 import GitHubHeatmap from '../components/Analytics/GitHubHeatmap'
 import AIInsightsPanel from '../components/Analytics/AIInsightsPanel'
 
@@ -38,6 +40,7 @@ function StatCard({ icon, label, value, sub, color = 'primary.main' }) {
 }
 
 export default function AnalyticsPage() {
+  const { token } = useAuth()
   const [tab, setTab] = useState(0)
   const [stats, setStats] = useState(null)
   const [daily, setDaily] = useState([])
@@ -46,6 +49,8 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    if (!token) return
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
     Promise.all([
       getOverviewStats(),
       getDailyStats(90),
@@ -57,7 +62,7 @@ export default function AnalyticsPage() {
       setTopics(t)
       setErrors(e)
     }).catch(console.error).finally(() => setLoading(false))
-  }, [])
+  }, [token])
 
   if (loading) {
     return (

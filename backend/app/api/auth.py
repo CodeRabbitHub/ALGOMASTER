@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text
 from app.database import get_db
@@ -6,6 +6,7 @@ from app.models.user import User
 from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse, UserOut
 from app.core.security import hash_password, verify_password, create_access_token
 from app.core.deps import get_current_user
+from app.core.limiter import limiter
 import uuid
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -15,7 +16,8 @@ SENTINEL_UUID = uuid.UUID("00000000-0000-0000-0000-000000000001")
 
 
 @router.post("/register", response_model=TokenResponse)
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     # Check duplicates
     existing = await db.execute(
         select(User).where((User.email == req.email) | (User.username == req.username))
@@ -35,8 +37,9 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.flush()  # get user.id assigned
 
-    # If this is the FIRST user, claim all legacy (sentinel) data
+    # If this is the FIRST user, make them admin and claim all legacy (sentinel) data
     if user_count == 0:
+        user.is_admin = True
         await _claim_legacy_data(db, user.id)
 
     await db.commit()
@@ -51,7 +54,8 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if not user or not verify_password(req.password, user.hashed_pw):

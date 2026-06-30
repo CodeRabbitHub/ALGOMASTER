@@ -8,74 +8,33 @@ from app.models.user import User        # ensure User table is registered
 from app.models.settings import AppSetting  # ensure app_settings table is registered
 from app.api.settings import load_openai_key_from_db
 from app.seed.problems import seed_problems
-from sqlalchemy import text
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from app.core.limiter import limiter
+from alembic.config import Config as AlembicConfig
+from alembic import command as alembic_command
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def run_migrations() -> None:
+    """Run Alembic migrations to head (versioned, rollback-capable)."""
+    ini_path = os.path.join(os.path.dirname(__file__), "..", "..", "alembic.ini")
+    cfg = AlembicConfig(os.path.abspath(ini_path))
+    alembic_command.upgrade(cfg, "head")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting AlgoMaster backend...")
+    # Create base tables (idempotent; Alembic manages columns from here on)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Safe migrations — adds new columns to existing DBs without data loss
-        # (asyncpg requires one statement per execute call)
-        await conn.execute(text(
-            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS constraints TEXT DEFAULT ''"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS input_params JSONB DEFAULT '[]'"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS output_type TEXT DEFAULT ''"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS hints JSONB DEFAULT '[]'"
-        ))
-        # ── Enum migrations (safe — ADD VALUE IF NOT EXISTS is idempotent) ─────
-        await conn.execute(text(
-            "ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'hint'"
-        ))
-        await conn.execute(text(
-            "ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'mistake_explain'"
-        ))
-        # ── Auth / multi-user migrations ─────────────────────────────────────
-        SENTINEL = "'00000000-0000-0000-0000-000000000001'::uuid"
-        for tbl in ["problem_attempts", "error_patterns", "ai_insights", "learning_milestones"]:
-            await conn.execute(text(
-                f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL DEFAULT {SENTINEL}"
-            ))
-        # problem_progress: composite PK (problem_id, user_id)
-        await conn.execute(text(
-            f"ALTER TABLE problem_progress ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL DEFAULT {SENTINEL}"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE problem_progress DROP CONSTRAINT IF EXISTS problem_progress_pkey"
-        ))
-        await conn.execute(text("""
-            DO $$ BEGIN
-                ALTER TABLE problem_progress ADD PRIMARY KEY (problem_id, user_id);
-            EXCEPTION WHEN others THEN NULL;
-            END $$
-        """))
-        # topic_mastery: composite PK (category, user_id)
-        await conn.execute(text(
-            f"ALTER TABLE topic_mastery ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL DEFAULT {SENTINEL}"
-        ))
-        await conn.execute(text(
-            "ALTER TABLE topic_mastery DROP CONSTRAINT IF EXISTS topic_mastery_pkey"
-        ))
-        await conn.execute(text("""
-            DO $$ BEGIN
-                ALTER TABLE topic_mastery ADD PRIMARY KEY (category, user_id);
-            EXCEPTION WHEN others THEN NULL;
-            END $$
-        """))
+    # Apply versioned migrations (adds/alters columns, rollback-capable)
+    run_migrations()
     await seed_problems()
     # Load encrypted OpenAI key from DB if not set via env var
     async with AsyncSessionLocal() as db:
@@ -96,6 +55,9 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

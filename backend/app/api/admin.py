@@ -4,7 +4,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.problem import Problem
 from app.models.user import User
-from app.core.deps import get_current_user
+from app.core.deps import require_admin
 from app.scripts.fetch_leetcode import (
     fetch_all, enrich_problem, get_progress, slug_from_url
 )
@@ -14,7 +14,7 @@ import os
 router = APIRouter(
     prefix="/admin",
     tags=["admin"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(require_admin)],
 )
 
 
@@ -39,7 +39,7 @@ async def fetch_progress():
 
 
 @router.post("/fetch-leetcode/{problem_id}")
-async def fetch_single(problem_id: str, db: AsyncSession = Depends(get_db)):
+async def fetch_single(problem_id: int, db: AsyncSession = Depends(get_db)):
     """
     Fetch and store real description for a single problem on demand.
     Called automatically by the frontend when opening a problem with placeholder text.
