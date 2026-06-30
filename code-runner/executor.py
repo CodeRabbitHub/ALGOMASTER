@@ -145,20 +145,35 @@ def run_code(code: str, test_cases: list, language: str = "python"):
 
     start = time.monotonic()
     try:
-        proc = subprocess.run(
+        proc = subprocess.Popen(
             [sys.executable, tmp_path],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=MAX_EXEC_SECS,
             env={
                 "PATH": "/usr/local/bin:/usr/bin:/bin",
                 "HOME": "/tmp",
                 "PYTHONDONTWRITEBYTECODE": "1",
             },
         )
+        try:
+            raw_stdout, raw_stderr = proc.communicate(timeout=MAX_EXEC_SECS)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()  # drain buffers so the process is fully reaped
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            return {
+                "stdout": "",
+                "stderr": f"Time limit exceeded ({MAX_EXEC_SECS}s)",
+                "test_results": [],
+                "is_correct": False,
+                "error_type": "TimeLimitExceeded",
+                "error_message": f"Your code exceeded the {MAX_EXEC_SECS}s time limit.",
+                "exec_time_ms": elapsed_ms,
+            }
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        stdout = proc.stdout[:MAX_OUTPUT_BYTES]
-        stderr = proc.stderr[:MAX_OUTPUT_BYTES]
+        stdout = raw_stdout[:MAX_OUTPUT_BYTES]
+        stderr = raw_stderr[:MAX_OUTPUT_BYTES]
 
         # Parse structured results if present
         test_results = []
@@ -205,17 +220,6 @@ def run_code(code: str, test_cases: list, language: str = "python"):
             "exec_time_ms": elapsed_ms,
         }
 
-    except subprocess.TimeoutExpired:
-        elapsed_ms = int((time.monotonic() - start) * 1000)
-        return {
-            "stdout": "",
-            "stderr": f"Time limit exceeded ({MAX_EXEC_SECS}s)",
-            "test_results": [],
-            "is_correct": False,
-            "error_type": "TimeLimitExceeded",
-            "error_message": f"Your code exceeded the {MAX_EXEC_SECS}s time limit.",
-            "exec_time_ms": elapsed_ms,
-        }
     finally:
         try:
             os.unlink(tmp_path)

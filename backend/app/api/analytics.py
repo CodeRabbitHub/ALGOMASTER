@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List
 import uuid
-from app.database import get_db
+from app.database import get_db, AsyncSessionLocal
 from app.models.analytics import TopicMastery, LearningMilestone
 from app.models.user import User
 from app.schemas.analytics import TopicMasteryOut, OverviewStatsOut, DailyStatOut, MilestoneOut, ErrorPatternOut
@@ -14,6 +14,11 @@ from app.analytics.engine import (
 from app.core.deps import get_current_user
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+async def _refresh_topic_mastery_bg(user_id: uuid.UUID):
+    """Background wrapper that opens its own DB session (request session is already closed)."""
+    async with AsyncSessionLocal() as db:
+        await refresh_topic_mastery(db, user_id)
 
 @router.get("/overview")
 async def overview(
@@ -42,7 +47,7 @@ async def topic_mastery(
         .order_by(TopicMastery.mastery_score.desc())
     )
     topics = result.scalars().all()
-    background_tasks.add_task(refresh_topic_mastery, db, current_user.id)
+    background_tasks.add_task(_refresh_topic_mastery_bg, current_user.id)
     return topics
 
 @router.post("/topic-mastery/refresh")

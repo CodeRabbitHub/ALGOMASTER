@@ -29,9 +29,12 @@ async def get_ai_response(
     problem_only = insight_type in ("hint", "mistake_explain", "code_review")
     if not problem_only:
         stats = await get_overview_stats(db, user_id)
-        errors = await get_error_patterns(db)
+        errors = await get_error_patterns(db, user_id)
         topics_q = await db.execute(
-            select(TopicMastery).order_by(TopicMastery.struggle_index.desc()).limit(10)
+            select(TopicMastery)
+            .where(TopicMastery.user_id == user_id)
+            .order_by(TopicMastery.struggle_index.desc())
+            .limit(10)
         )
         weak_topics = topics_q.scalars().all()
         context = f"""

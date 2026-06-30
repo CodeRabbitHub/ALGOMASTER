@@ -45,13 +45,17 @@ async def get_all_progress(
         select(ProblemProgress).where(ProblemProgress.user_id == current_user.id)
     )
     progs = result.scalars().all()
-    return {p.problem_id: {
-        "solved": p.solved_at is not None,
-        "starred": p.is_starred,
-        "attempts": p.total_attempts,
-        "time_secs": p.total_time_secs,
-        "confidence": p.confidence,
-    } for p in progs}
+    return [
+        {
+            "problem_id": p.problem_id,
+            "solved_at": p.solved_at.isoformat() if p.solved_at else None,
+            "is_starred": p.is_starred,
+            "total_attempts": p.total_attempts,
+            "total_time_secs": p.total_time_secs,
+            "confidence": p.confidence,
+        }
+        for p in progs
+    ]
 
 @router.get("/{problem_id}", response_model=ProblemOut)
 async def get_problem(
