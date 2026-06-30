@@ -1,0 +1,106 @@
+version: "3.9"
+
+services:
+  # ── Reverse Proxy ────────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
+    networks:
+      - algomaster
+
+  # ── React Frontend ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - VITE_API_BASE_URL=http://localhost/api
+    expose:
+      - "5173"
+    restart: unless-stopped
+    networks:
+      - algomaster
+
+  # ── FastAPI Backend ──────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    # --reload is specified here (not in the Dockerfile) so the image is production-safe
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-algomaster}:${POSTGRES_PASSWORD:-algomaster_secret}@db:5432/${POSTGRES_DB:-algomaster}
+      - CODE_RUNNER_URL=http://code-runner:5000
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - algomaster
+
+  # ── Python Code Runner (sandboxed) ───────────────────────────────────────────
+  code-runner:
+    build:
+      context: ./code-runner
+      dockerfile: Dockerfile
+    expose:
+      - "5000"
+    environment:
+      - MAX_EXECUTION_TIME=10
+      - MAX_MEMORY_MB=128
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    mem_limit: 256m
+    cpus: "0.5"
+    restart: unless-stopped
+    networks:
+      - algomaster
+
+  # ── TimescaleDB (PostgreSQL + time-series) ───────────────────────────────────
+  db:
+    image: timescale/timescaledb:latest-pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-algomaster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-algomaster_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-algomaster}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-algomaster} -d ${POSTGRES_DB:-algomaster}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - algomaster
+
+volumes:
+  postgres_data:
+
+networks:
+  algomaster:
+    driver: bridge
