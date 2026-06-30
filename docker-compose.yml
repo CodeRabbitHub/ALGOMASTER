@@ -7,8 +7,10 @@ services:
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - frontend
-      - backend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
     restart: unless-stopped
     networks:
       - algomaster
@@ -48,6 +50,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      code-runner:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 60s
     restart: unless-stopped
     networks:
       - algomaster

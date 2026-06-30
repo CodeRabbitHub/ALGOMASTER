@@ -1,12 +1,19 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from datetime import datetime
 import uuid
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    username: str
-    password: str
+    username: str = Field(min_length=3, max_length=50, pattern=r'^[a-zA-Z0-9_-]+$')
+    password: str = Field(min_length=8, max_length=72)  # 72 = bcrypt hard limit
+
+    @field_validator('password')
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        if v.isdigit() or v.isalpha():
+            raise ValueError('Password must contain both letters and numbers')
+        return v
 
 class LoginRequest(BaseModel):
     email: EmailStr

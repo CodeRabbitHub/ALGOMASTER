@@ -19,6 +19,19 @@ CREATE TYPE error_category_enum AS ENUM (
 
 -- ─── PROBLEMS TABLE ───────────────────────────────────────────────────────────
 
+CREATE TABLE IF NOT EXISTS users (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email       VARCHAR(255) UNIQUE NOT NULL,
+    username    VARCHAR(100) UNIQUE NOT NULL,
+    hashed_pw   VARCHAR(255) NOT NULL,
+    is_active   BOOLEAN DEFAULT true,
+    is_admin    BOOLEAN DEFAULT false,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_users_email    ON users(email);
+CREATE INDEX idx_users_username ON users(username);
+
 CREATE TABLE IF NOT EXISTS problems (
     id              SERIAL PRIMARY KEY,
     slug            VARCHAR(200) UNIQUE NOT NULL,
@@ -31,6 +44,10 @@ CREATE TABLE IF NOT EXISTS problems (
     starter_code    TEXT DEFAULT 'def solution():\n    pass\n',
     test_cases      JSONB DEFAULT '[]',
     hints           JSONB DEFAULT '[]',
+    tags            JSONB DEFAULT '[]',
+    constraints     TEXT DEFAULT '',
+    input_params    JSONB DEFAULT '[]',
+    output_type     TEXT DEFAULT '',
     is_new          BOOLEAN DEFAULT false,
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
@@ -57,6 +74,7 @@ SELECT create_hypertable('sessions', 'started_at', if_not_exists => TRUE);
 
 CREATE TABLE IF NOT EXISTS problem_attempts (
     id                  UUID DEFAULT gen_random_uuid(),
+    user_id             UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     problem_id          INT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
     session_id          UUID,
     submitted_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -82,7 +100,8 @@ CREATE INDEX idx_attempts_error_type ON problem_attempts(error_type, submitted_a
 -- ─── PROBLEM PROGRESS TABLE (one row per problem) ─────────────────────────────
 
 CREATE TABLE IF NOT EXISTS problem_progress (
-    problem_id          INT PRIMARY KEY REFERENCES problems(id) ON DELETE CASCADE,
+    problem_id          INT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
+    user_id             UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     first_seen_at       TIMESTAMPTZ DEFAULT NOW(),
     solved_at           TIMESTAMPTZ,
     total_attempts      INT DEFAULT 0,
@@ -91,7 +110,8 @@ CREATE TABLE IF NOT EXISTS problem_progress (
     confidence          SMALLINT DEFAULT 0 CHECK (confidence BETWEEN 0 AND 5),
     notes               TEXT DEFAULT '',
     best_solution       TEXT DEFAULT '',
-    last_attempted_at   TIMESTAMPTZ
+    last_attempted_at   TIMESTAMPTZ,
+    PRIMARY KEY (problem_id, user_id)
 );
 
 CREATE INDEX idx_progress_solved_at ON problem_progress(solved_at);
@@ -101,6 +121,7 @@ CREATE INDEX idx_progress_starred ON problem_progress(is_starred);
 
 CREATE TABLE IF NOT EXISTS error_patterns (
     id              UUID DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     attempt_id      UUID,
     problem_id      INT NOT NULL REFERENCES problems(id) ON DELETE CASCADE,
     occurred_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -122,8 +143,9 @@ CREATE INDEX idx_errors_problem ON error_patterns(problem_id, occurred_at DESC);
 
 CREATE TABLE IF NOT EXISTS ai_insights (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     generated_at    TIMESTAMPTZ DEFAULT NOW(),
-    insight_type    insight_type_enum NOT NULL,
+    insight_type    VARCHAR(50) NOT NULL,
     content         TEXT NOT NULL,
     input_context   JSONB DEFAULT '{}',
     tokens_used     INT DEFAULT 0,
@@ -136,6 +158,7 @@ CREATE INDEX idx_insights_type ON ai_insights(insight_type, generated_at DESC);
 
 CREATE TABLE IF NOT EXISTS learning_milestones (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     achieved_at     TIMESTAMPTZ DEFAULT NOW(),
     milestone_type  VARCHAR(100) NOT NULL,
     description     TEXT NOT NULL,
@@ -145,7 +168,8 @@ CREATE TABLE IF NOT EXISTS learning_milestones (
 -- ─── TOPIC MASTERY TABLE (cached, recomputed periodically) ───────────────────
 
 CREATE TABLE IF NOT EXISTS topic_mastery (
-    category            VARCHAR(100) PRIMARY KEY,
+    category            VARCHAR(100) NOT NULL,
+    user_id             UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
     total_problems      INT DEFAULT 0,
     solved              INT DEFAULT 0,
     easy_solved         INT DEFAULT 0,
@@ -155,7 +179,8 @@ CREATE TABLE IF NOT EXISTS topic_mastery (
     avg_time_secs       INT DEFAULT 0,
     struggle_index      FLOAT DEFAULT 0,
     mastery_score       FLOAT DEFAULT 0,
-    last_updated        TIMESTAMPTZ DEFAULT NOW()
+    last_updated        TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY (category, user_id)
 );
 
 -- ─── CONTINUOUS AGGREGATE: daily_stats ───────────────────────────────────────

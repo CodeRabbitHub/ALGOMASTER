@@ -550,6 +550,11 @@ export default function ProblemPage() {
     return () => window.removeEventListener('keydown', handler)
   }, [handleRun, handleSubmit])
 
+  // Clear notes autosave timer on unmount to prevent state updates on dead component
+  useEffect(() => {
+    return () => clearTimeout(notesSaveRef.current)
+  }, [])
+
   // Timer + AI — reset when switching problems
   useEffect(() => {
     setElapsedSecs(0)

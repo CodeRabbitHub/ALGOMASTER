@@ -112,7 +112,14 @@ async def get_error_patterns(db: AsyncSession, user_id: uuid.UUID = None) -> Lis
     return [{"error_category": r.error_category, "count": r.count} for r in result.all()]
 
 async def refresh_topic_mastery(db: AsyncSession, user_id: uuid.UUID):
-    """Recompute topic_mastery table for a specific user."""
+    """Recompute topic_mastery table for a specific user (skips if data is < 5 min old)."""
+    last_q = await db.execute(
+        select(func.max(TopicMastery.last_updated)).where(TopicMastery.user_id == user_id)
+    )
+    last = last_q.scalar()
+    if last and (datetime.now(timezone.utc) - last) < timedelta(minutes=5):
+        return  # data is fresh enough — skip the ~177 round-trips
+
     categories_q = await db.execute(
         select(Problem.category, func.count().label("total"))
         .group_by(Problem.category)

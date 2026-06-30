@@ -132,12 +132,24 @@ async def get_problem_attempts(
         error_message=r.error_message, code=r.code,
     ) for r in rows]
 
+_ERROR_MAP = {
+    "syntaxerror":    "SyntaxError",
+    "typeerror":      "TypeError",
+    "indexerror":     "IndexError",
+    "keyerror":       "KeyError",
+    "valueerror":     "ValueError",
+    "attributeerror": "AttributeError",
+    "recursionerror": "RecursionError",
+    "timeouterror":   "TimeoutError",
+    "memoryerror":    "MemoryError",
+    "runtimeerror":   "RuntimeError",
+}
+
 def _classify_error(stderr: str) -> str:
     if not stderr:
         return "WrongAnswer"
     s = stderr.lower()
-    for name in ["syntaxerror","typeerror","indexerror","keyerror","valueerror",
-                 "attributeerror","recursionerror","timeouterror","memoryerror","runtimeerror"]:
-        if name in s:
-            return name.replace("error","Error").capitalize()
+    for key, val in _ERROR_MAP.items():
+        if key in s:
+            return val
     return "Other"

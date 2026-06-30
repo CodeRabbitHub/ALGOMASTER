@@ -4,8 +4,10 @@ from app.analytics.engine import get_overview_stats, get_error_patterns
 from app.models.analytics import TopicMastery, AIInsight
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-import json, uuid
+import json, uuid, logging
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 async def get_ai_response(
     insight_type: str,
@@ -146,4 +148,7 @@ Weakest topics (by struggle index):
 
         return {"content": content, "tokens_used": tokens, "id": str(insight.id)}
     except Exception as e:
+        logger.exception(
+            "OpenAI call failed: insight_type=%s user_id=%s", insight_type, user_id
+        )
         return {"content": f"AI error: {str(e)}", "tokens_used": 0}

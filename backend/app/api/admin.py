@@ -1,6 +1,8 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pydantic import BaseModel
+from typing import List, Optional
 from app.database import get_db
 from app.models.problem import Problem
 from app.models.user import User
@@ -10,6 +12,12 @@ from app.scripts.fetch_leetcode import (
 )
 import httpx
 import os
+
+
+class ManualUpdateBody(BaseModel):
+    description: Optional[str] = None
+    tags: Optional[List[str]] = None
+    constraints: Optional[str] = None
 
 router = APIRouter(
     prefix="/admin",
@@ -109,12 +117,11 @@ async def problems_without_description(db: AsyncSession = Depends(get_db)):
 @router.patch("/problems/{slug}/manual")
 async def manual_update_problem(
     slug: str,
-    body: dict,
+    body: ManualUpdateBody,
     db: AsyncSession = Depends(get_db),
 ):
     """
     Manually set description/tags/constraints for a problem by LeetCode slug.
-    Body: { description, tags?, constraints? }
     Used for premium problems that can't be auto-fetched.
     Updates ALL problems sharing that slug (same LeetCode URL in multiple categories).
     """
@@ -124,17 +131,13 @@ async def manual_update_problem(
     if not matched:
         raise HTTPException(404, f"No problem found with slug '{slug}'")
 
-    description = body.get("description", "").strip()
-    tags = body.get("tags", [])
-    constraints = body.get("constraints", "").strip()
-
     for p in matched:
-        if description:
-            p.description = description
-        if tags:
-            p.tags = tags
-        if constraints:
-            p.constraints = constraints
+        if body.description is not None:
+            p.description = body.description.strip()
+        if body.tags is not None:
+            p.tags = body.tags
+        if body.constraints is not None:
+            p.constraints = body.constraints.strip()
 
     await db.commit()
     return {
