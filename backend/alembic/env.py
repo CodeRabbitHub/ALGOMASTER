@@ -41,7 +41,19 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    asyncio.run(run_async_migrations())
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        # Called from inside a running event loop (shouldn't happen if run via thread pool)
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            future = pool.submit(asyncio.run, run_async_migrations())
+            future.result()
+    else:
+        asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

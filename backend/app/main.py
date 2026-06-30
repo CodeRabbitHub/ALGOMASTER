@@ -13,28 +13,100 @@ from slowapi.errors import RateLimitExceeded
 from app.core.limiter import limiter
 from alembic.config import Config as AlembicConfig
 from alembic import command as alembic_command
-import logging
-import os
+from sqlalchemy import text
+import asyncio, logging, os
+from concurrent.futures import ThreadPoolExecutor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def run_migrations() -> None:
-    """Run Alembic migrations to head (versioned, rollback-capable)."""
-    ini_path = os.path.join(os.path.dirname(__file__), "..", "..", "alembic.ini")
-    cfg = AlembicConfig(os.path.abspath(ini_path))
-    alembic_command.upgrade(cfg, "head")
+    """Run Alembic migrations to head. Must be called in a thread (not inside the running event loop)."""
+    try:
+        ini_path = os.path.join(os.path.dirname(__file__), "..", "..", "alembic.ini")
+        cfg = AlembicConfig(os.path.abspath(ini_path))
+        alembic_command.upgrade(cfg, "head")
+        logger.info("Alembic migrations applied.")
+    except Exception:
+        logger.exception("Alembic migration failed — falling back to inline migrations.")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting AlgoMaster backend...")
-    # Create base tables (idempotent; Alembic manages columns from here on)
+
+    # 1. Create base tables from SQLAlchemy models (idempotent)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Apply versioned migrations (adds/alters columns, rollback-capable)
-    run_migrations()
+
+    # 2. Inline safety-net for critical columns that must exist immediately.
+    #    These are idempotent (IF NOT EXISTS) and run synchronously before Alembic,
+    #    so the app never starts with a missing column even if Alembic is slow.
+    async with engine.begin() as conn:
+        await conn.execute(text(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE"
+        ))
+        SENTINEL = "'00000000-0000-0000-0000-000000000001'::uuid"
+        await conn.execute(text(
+            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS tags JSONB DEFAULT '[]'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS constraints TEXT DEFAULT ''"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS input_params JSONB DEFAULT '[]'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS output_type TEXT DEFAULT ''"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE problems ADD COLUMN IF NOT EXISTS hints JSONB DEFAULT '[]'"
+        ))
+        # insight_type_enum was removed (L-1 fix) — column is now VARCHAR(50).
+        # Wrap in DO block so existing DBs that still have the old enum don't crash.
+        await conn.execute(text("""
+            DO $$ BEGIN
+                ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'hint';
+                ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'mistake_explain';
+            EXCEPTION WHEN undefined_object THEN NULL;
+            END $$
+        """))
+        for tbl in ["problem_attempts", "error_patterns", "ai_insights", "learning_milestones"]:
+            await conn.execute(text(
+                f"ALTER TABLE {tbl} ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL DEFAULT {SENTINEL}"
+            ))
+        await conn.execute(text(
+            f"ALTER TABLE problem_progress ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL DEFAULT {SENTINEL}"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE problem_progress DROP CONSTRAINT IF EXISTS problem_progress_pkey"
+        ))
+        await conn.execute(text("""
+            DO $$ BEGIN
+                ALTER TABLE problem_progress ADD PRIMARY KEY (problem_id, user_id);
+            EXCEPTION WHEN others THEN NULL;
+            END $$
+        """))
+        await conn.execute(text(
+            f"ALTER TABLE topic_mastery ADD COLUMN IF NOT EXISTS user_id UUID NOT NULL DEFAULT {SENTINEL}"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE topic_mastery DROP CONSTRAINT IF EXISTS topic_mastery_pkey"
+        ))
+        await conn.execute(text("""
+            DO $$ BEGIN
+                ALTER TABLE topic_mastery ADD PRIMARY KEY (category, user_id);
+            EXCEPTION WHEN others THEN NULL;
+            END $$
+        """))
+
+    # 3. Run Alembic in a thread pool to avoid event-loop conflict
+    #    (alembic's env.py uses asyncio.run() which cannot be called inside a running loop)
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        await loop.run_in_executor(pool, run_migrations)
+
     await seed_problems()
     # Load encrypted OpenAI key from DB if not set via env var
     async with AsyncSessionLocal() as db:
