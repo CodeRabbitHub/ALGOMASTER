@@ -9,7 +9,7 @@ from app.models.attempt import ProblemAttempt, ErrorPattern
 from app.models.problem import Problem, ProblemProgress
 from app.models.user import User
 from app.schemas.problem import RunCodeRequest, RunCodeResponse
-from app.schemas.analytics import AttemptIn, AttemptOut
+from app.schemas.analytics import AttemptOut
 from app.core.deps import get_current_user
 from app.config import settings
 

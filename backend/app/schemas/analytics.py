@@ -2,17 +2,6 @@ from pydantic import BaseModel
 from typing import Optional, List, Any, Dict
 from datetime import datetime, date
 
-class AttemptIn(BaseModel):
-    problem_id: int
-    session_id: Optional[str] = None
-    code: str
-    time_spent_secs: int = 0
-    is_correct: bool = False
-    error_type: Optional[str] = None
-    error_message: Optional[str] = None
-    stdout: Optional[str] = None
-    test_results: List[Any] = []
-
 class AttemptOut(BaseModel):
     id: str
     problem_id: int

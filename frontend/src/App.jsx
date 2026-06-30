@@ -1,6 +1,6 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { ThemeProvider, createTheme, CssBaseline } from '@mui/material'
+import { ThemeProvider, createTheme, CssBaseline, Box, Typography } from '@mui/material'
 import { AuthProvider } from './contexts/AuthContext'
 import ProtectedRoute from './components/Auth/ProtectedRoute'
 import Layout from './components/Layout/Layout'
@@ -9,6 +9,18 @@ import TrackerPage from './pages/TrackerPage'
 import ProblemPage from './pages/ProblemPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import SettingsPage from './pages/SettingsPage'
+
+function NotFoundPage() {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 2 }}>
+      <Typography variant="h1" fontWeight={700} sx={{ fontSize: 80, color: '#30363d' }}>404</Typography>
+      <Typography variant="h5" color="text.secondary">Page not found</Typography>
+      <Typography variant="body2" color="text.secondary">
+        <a href="/tracker" style={{ color: '#58a6ff' }}>Go back to tracker →</a>
+      </Typography>
+    </Box>
+  )
+}
 
 const darkTheme = createTheme({
   palette: {
@@ -75,6 +87,7 @@ export default function App() {
             <Route path="/problem/:id" element={<ProtectedLayout><ProblemPage /></ProtectedLayout>} />
             <Route path="/analytics" element={<ProtectedLayout><AnalyticsPage /></ProtectedLayout>} />
             <Route path="/settings" element={<ProtectedLayout><SettingsPage /></ProtectedLayout>} />
+            <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

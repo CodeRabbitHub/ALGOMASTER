@@ -3,7 +3,7 @@ import {
   Box, Typography, TextField, Select, MenuItem, FormControl, InputLabel,
   IconButton, Tooltip, LinearProgress, CircularProgress,
   Table, TableBody, TableCell, TableHead, TableRow,
-  Stack, Collapse, Button, Checkbox,
+  Stack, Collapse, Button,
 } from '@mui/material'
 import {
   Star, StarBorder, CheckCircle, RadioButtonUnchecked, OpenInNew,

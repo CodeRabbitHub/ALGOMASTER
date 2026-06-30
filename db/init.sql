@@ -10,12 +10,7 @@ CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
 -- ─── ENUM TYPES ───────────────────────────────────────────────────────────────
 
 CREATE TYPE difficulty_enum AS ENUM ('Easy', 'Medium', 'Hard');
-CREATE TYPE insight_type_enum AS ENUM ('weekly_report', 'study_plan', 'code_review', 'chat', 'mistake_analysis', 'hint', 'mistake_explain');
-CREATE TYPE error_category_enum AS ENUM (
-    'SyntaxError', 'TypeError', 'IndexError', 'KeyError', 'ValueError',
-    'AttributeError', 'RecursionError', 'TimeoutError', 'MemoryError',
-    'LogicError', 'WrongAnswer', 'RuntimeError', 'Other'
-);
+-- insight_type_enum kept for reference; ai_insights.insight_type uses VARCHAR(50) for flexibility
 
 -- ─── PROBLEMS TABLE ───────────────────────────────────────────────────────────
 
