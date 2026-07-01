@@ -38,3 +38,6 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+
+# ── Local-only scraping utilities (not needed to run the app) ────────────────
+scripts/
