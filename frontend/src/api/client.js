@@ -10,14 +10,14 @@ const api = axios.create({
 const _saved = localStorage.getItem('algomaster_token')
 if (_saved) api.defaults.headers.common['Authorization'] = `Bearer ${_saved}`
 
-// Redirect to /login on 401
+// Redirect to /login on 401 (with reason so the login page can show a message)
 api.interceptors.response.use(
   res => res,
   err => {
     if (err?.response?.status === 401 && window.location.pathname !== '/login') {
       localStorage.removeItem('algomaster_token')
       localStorage.removeItem('algomaster_user')
-      window.location.href = '/login'
+      window.location.href = '/login?reason=session_expired'
     }
     return Promise.reject(err)
   }

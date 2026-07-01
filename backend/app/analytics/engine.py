@@ -23,6 +23,13 @@ async def get_overview_stats(db: AsyncSession, user_id: uuid.UUID) -> Dict[str, 
     )
     solved_by_diff = {r.difficulty: r.cnt for r in solved_q.all()}
 
+    # Total problems by difficulty (for accurate bar scaling)
+    total_diff_q = await db.execute(
+        select(Problem.difficulty, func.count().label("cnt"))
+        .group_by(Problem.difficulty)
+    )
+    total_by_diff = {r.difficulty: r.cnt for r in total_diff_q.all()}
+
     # Total attempts and time (scoped to user)
     agg_q = await db.execute(
         select(
@@ -63,6 +70,9 @@ async def get_overview_stats(db: AsyncSession, user_id: uuid.UUID) -> Dict[str, 
         "easy_solved": solved_by_diff.get("Easy", 0),
         "medium_solved": solved_by_diff.get("Medium", 0),
         "hard_solved": solved_by_diff.get("Hard", 0),
+        "easy_total": total_by_diff.get("Easy", 0),
+        "medium_total": total_by_diff.get("Medium", 0),
+        "hard_total": total_by_diff.get("Hard", 0),
         "total_attempts": agg.total_attempts,
         "total_time_secs": agg.total_time,
         "first_attempt_success_rate": round(first_attempt_rate, 1),

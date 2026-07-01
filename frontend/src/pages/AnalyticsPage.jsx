@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Box, Typography, Tabs, Tab, Grid, Paper, Stack, Chip,
-  CircularProgress, Avatar,
+  CircularProgress, Avatar, Skeleton,
 } from '@mui/material'
 import {
   EmojiEvents, Whatshot, Speed, BugReport, Psychology,
@@ -66,8 +66,27 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
-        <CircularProgress />
+      <Box sx={{ p: 3 }}>
+        <Skeleton variant="text" width={240} height={44} sx={{ mb: 3 }} />
+        <Grid container spacing={2} mb={3}>
+          {[...Array(4)].map((_, i) => (
+            <Grid item xs={12} sm={6} md={3} key={i}>
+              <Paper sx={{ p: 2.5 }}>
+                <Stack direction="row" alignItems="center" gap={1.5}>
+                  <Skeleton variant="circular" width={40} height={40} />
+                  <Box sx={{ flex: 1 }}>
+                    <Skeleton variant="text" width="60%" height={32} />
+                    <Skeleton variant="text" width="80%" height={20} />
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
+        <Skeleton variant="rounded" height={40} width={480} sx={{ mb: 3 }} />
+        <Paper sx={{ p: 2 }}>
+          <Skeleton variant="rounded" height={300} />
+        </Paper>
       </Box>
     )
   }
@@ -165,15 +184,18 @@ export default function AnalyticsPage() {
                 <Stack gap={1.5} mt={1}>
                   {['easy_solved', 'medium_solved', 'hard_solved'].map((key, i) => {
                     const label = ['Easy', 'Medium', 'Hard'][i]
+                    const totalKey = key.replace('_solved', '_total')
                     const val = stats[key] || 0
+                    const total = stats[totalKey] || 0
+                    const pct = total ? (val / total) * 100 : 0
                     return (
                       <Box key={key}>
                         <Stack direction="row" justifyContent="space-between" mb={0.5}>
                           <Typography variant="body2" sx={{ color: DIFF_COLORS[label] }}>{label}</Typography>
-                          <Typography variant="body2" color="text.secondary">{val}</Typography>
+                          <Typography variant="body2" color="text.secondary">{val} / {total}</Typography>
                         </Stack>
                         <Box sx={{ height: 8, bgcolor: '#21262d', borderRadius: 4, overflow: 'hidden' }}>
-                          <Box sx={{ height: '100%', width: `${Math.min(val / 2, 100)}%`, bgcolor: DIFF_COLORS[label], borderRadius: 4, transition: 'width 1s' }} />
+                          <Box sx={{ height: '100%', width: `${pct}%`, bgcolor: DIFF_COLORS[label], borderRadius: 4, transition: 'width 1s' }} />
                         </Box>
                       </Box>
                     )

@@ -6,14 +6,15 @@ import {
   Alert, LinearProgress, Collapse,
 } from '@mui/material'
 import {
-  ArrowBack, Star, StarBorder, PlayArrow, CheckCircle,
+  ArrowBack, ArrowForward, Star, StarBorder, PlayArrow, CheckCircle,
   RadioButtonUnchecked, OpenInNew, History, ExpandMore, ExpandLess,
   LightbulbOutlined, Send, AutoAwesome, BugReport, RateReview,
+  RestartAlt, ChevronLeft, ChevronRight,
 } from '@mui/icons-material'
 import Editor from '@monaco-editor/react'
 import {
   getProblem, getProgress, updateProgress, starProblem,
-  runCode, getAttemptHistory, getAIInsight,
+  runCode, getAttemptHistory, getAIInsight, getProblems,
 } from '../api/client'
 
 const DIFF_COLOR = { Easy: '#3fb950', Medium: '#d29922', Hard: '#f85149' }
@@ -381,7 +382,7 @@ function TestCasePanel({ testCases, result, running }) {
 }
 
 // ── Verdict Screen (shown after Submit) ───────────────────────────────────────
-function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult }) {
+function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult, onNext, nextProblem }) {
   const passed = verdict.test_results?.filter(r => r.passed).length ?? 0
   const total  = verdict.test_results?.length ?? 0
   const allOk  = verdict.is_correct
@@ -505,9 +506,21 @@ function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistak
           </Paper>
         )}
 
-        <Button variant="outlined" onClick={onClose} sx={{ mt: 1 }}>
-          Back to Editor
-        </Button>
+        <Stack direction="row" gap={1} justifyContent="center" mt={1}>
+          <Button variant="outlined" onClick={onClose}>
+            Back to Editor
+          </Button>
+          {allOk && nextProblem && (
+            <Button
+              variant="contained"
+              endIcon={<ArrowForward />}
+              onClick={onNext}
+              sx={{ bgcolor: '#238636', '&:hover': { bgcolor: '#2ea043' } }}
+            >
+              Next: {nextProblem.title.length > 28 ? nextProblem.title.slice(0, 28) + '…' : nextProblem.title}
+            </Button>
+          )}
+        </Stack>
       </Paper>
     </Box>
   )
@@ -531,15 +544,20 @@ export default function ProblemPage() {
   const [verdict, setVerdict] = useState(null)
   const [expandedAttempt, setExpandedAttempt] = useState(null)
   const notesSaveRef = useRef(null)
+  const codeAutoSaveRef = useRef(null)
+  const [categoryProblems, setCategoryProblems] = useState([])
   // AI Coach state
   const [aiLoading, setAiLoading] = useState(false)
   const [aiHintResult, setAiHintResult] = useState(null)
   const [aiHintOpen, setAiHintOpen] = useState(false)
   const [verdictAiResult, setVerdictAiResult] = useState(null)
 
-  // Clear notes autosave timer on unmount to prevent state updates on dead component
+  // Clear autosave timers on unmount
   useEffect(() => {
-    return () => clearTimeout(notesSaveRef.current)
+    return () => {
+      clearTimeout(notesSaveRef.current)
+      clearTimeout(codeAutoSaveRef.current)
+    }
   }, [])
 
   // Timer + AI — reset when switching problems
@@ -568,7 +586,10 @@ export default function ProblemPage() {
         setNotes(prog?.notes || '')
         if (prog?.best_solution) setCode(prog.best_solution)
         else if (prob.starter_code) setCode(prob.starter_code)
+        // Load category siblings for prev/next navigation
+        return getProblems({ category: prob.category, limit: 200 })
       })
+      .then(probs => setCategoryProblems(probs || []))
       .catch(console.error)
   }, [id])
 
@@ -617,6 +638,26 @@ export default function ProblemPage() {
       setAiLoading(false)
     }
   }
+
+  // Auto-save code 2s after last keystroke
+  const handleCodeChange = useCallback((val) => {
+    const newCode = val || ''
+    setCode(newCode)
+    clearTimeout(codeAutoSaveRef.current)
+    codeAutoSaveRef.current = setTimeout(() => {
+      updateProgress(id, { best_solution: newCode }).catch(() => {})
+    }, 2000)
+  }, [id])
+
+  // Reset code to starter template
+  const handleResetCode = useCallback(() => {
+    if (window.confirm('Reset to starter code? Your current code will be lost.')) {
+      const starter = problem?.starter_code || DEFAULT_CODE
+      setCode(starter)
+      clearTimeout(codeAutoSaveRef.current)
+      updateProgress(id, { best_solution: starter }).catch(() => {})
+    }
+  }, [problem, id])
 
   const handleRun = useCallback(async () => {
     setRunning(true)
@@ -703,6 +744,12 @@ export default function ProblemPage() {
   const examples = problem.test_cases || []
   const description = problem.description || ''
 
+  // Prev / Next within the same category
+  const currentIdx = categoryProblems.findIndex(p => p.id === parseInt(id))
+  const prevProblem = currentIdx > 0 ? categoryProblems[currentIdx - 1] : null
+  const nextProblem = currentIdx >= 0 && currentIdx < categoryProblems.length - 1
+    ? categoryProblems[currentIdx + 1] : null
+
   // Split description — stop before any markdown Example or Constraints heading
   const descMain = description.split(/\n#{1,6}\s*\**\s*(?:Example\s+\d+|Constraints?)\b/i)[0]
 
@@ -713,9 +760,25 @@ export default function ProblemPage() {
         direction="row" alignItems="center" gap={1} px={2} py={1}
         sx={{ bgcolor: 'background.paper', borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}
       >
-        <IconButton size="small" onClick={() => navigate('/tracker')}>
-          <ArrowBack fontSize="small" />
-        </IconButton>
+        <Tooltip title="Back to tracker">
+          <IconButton size="small" onClick={() => navigate('/tracker')}>
+            <ArrowBack fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title={prevProblem ? `← ${prevProblem.title}` : 'First problem in category'}>
+          <span>
+            <IconButton size="small" onClick={() => prevProblem && navigate(`/problem/${prevProblem.id}`)} disabled={!prevProblem}>
+              <ChevronLeft fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
+        <Tooltip title={nextProblem ? `${nextProblem.title} →` : 'Last problem in category'}>
+          <span>
+            <IconButton size="small" onClick={() => nextProblem && navigate(`/problem/${nextProblem.id}`)} disabled={!nextProblem}>
+              <ChevronRight fontSize="small" />
+            </IconButton>
+          </span>
+        </Tooltip>
         <Typography variant="subtitle1" fontWeight={600} sx={{ flexGrow: 1 }} noWrap>
           {problem.title}
         </Typography>
@@ -959,12 +1022,19 @@ export default function ProblemPage() {
               onCodeReview={handleCodeReview}
               aiLoading={aiLoading}
               aiResult={verdictAiResult}
+              nextProblem={nextProblem}
+              onNext={() => nextProblem && navigate(`/problem/${nextProblem.id}`)}
             />
           )}
           {/* Toolbar */}
           <Stack direction="row" alignItems="center" gap={1} px={2} py={1}
             sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#0d1117', flexShrink: 0 }}>
             <Chip label="Python 3" size="small" variant="outlined" />
+            <Tooltip title="Reset to starter code">
+              <IconButton size="small" onClick={handleResetCode} sx={{ color: '#8b949e', '&:hover': { color: '#f85149' } }}>
+                <RestartAlt sx={{ fontSize: 17 }} />
+              </IconButton>
+            </Tooltip>
             <Box sx={{ flexGrow: 1 }} />
             {/* Solve timer */}
             <Chip
@@ -980,22 +1050,30 @@ export default function ProblemPage() {
                 cursor: 'pointer',
               }}
             />
-            <Button
-              variant="outlined" size="small"
-              startIcon={running ? <CircularProgress size={14} color="inherit" /> : <PlayArrow />}
-              onClick={handleRun} disabled={running}
-              sx={{ borderColor: '#3fb950', color: '#3fb950', '&:hover': { borderColor: '#3fb950', bgcolor: '#1a3a1a' } }}
-            >
-              {running ? 'Running…' : 'Run'}
-            </Button>
-            <Button
-              variant="contained" size="small"
-              startIcon={running ? <CircularProgress size={14} color="inherit" /> : <Send sx={{ fontSize: 14 }} />}
-              onClick={handleSubmit} disabled={running}
-              sx={{ bgcolor: '#238636', '&:hover': { bgcolor: '#2ea043' } }}
-            >
-              Submit
-            </Button>
+            <Tooltip title="Run code (Ctrl+Enter)">
+              <span>
+                <Button
+                  variant="outlined" size="small"
+                  startIcon={running ? <CircularProgress size={14} color="inherit" /> : <PlayArrow />}
+                  onClick={handleRun} disabled={running}
+                  sx={{ borderColor: '#3fb950', color: '#3fb950', '&:hover': { borderColor: '#3fb950', bgcolor: '#1a3a1a' } }}
+                >
+                  {running ? 'Running…' : 'Run'}
+                </Button>
+              </span>
+            </Tooltip>
+            <Tooltip title="Submit solution (Ctrl+Shift+Enter)">
+              <span>
+                <Button
+                  variant="contained" size="small"
+                  startIcon={running ? <CircularProgress size={14} color="inherit" /> : <Send sx={{ fontSize: 14 }} />}
+                  onClick={handleSubmit} disabled={running}
+                  sx={{ bgcolor: '#238636', '&:hover': { bgcolor: '#2ea043' } }}
+                >
+                  Submit
+                </Button>
+              </span>
+            </Tooltip>
           </Stack>
 
           {running && <LinearProgress color="success" sx={{ height: 2, flexShrink: 0 }} />}
@@ -1006,7 +1084,7 @@ export default function ProblemPage() {
               height="100%"
               language="python"
               value={code}
-              onChange={v => setCode(v || '')}
+              onChange={handleCodeChange}
               theme="vs-dark"
               options={{
                 fontSize: 14,
