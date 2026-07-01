@@ -537,19 +537,6 @@ export default function ProblemPage() {
   const [aiHintOpen, setAiHintOpen] = useState(false)
   const [verdictAiResult, setVerdictAiResult] = useState(null)
 
-  // Keyboard shortcuts: Ctrl+Enter → Run, Ctrl+Shift+Enter → Submit
-  useEffect(() => {
-    const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-        e.preventDefault()
-        if (e.shiftKey) handleSubmit()
-        else handleRun()
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [handleRun, handleSubmit])
-
   // Clear notes autosave timer on unmount to prevent state updates on dead component
   useEffect(() => {
     return () => clearTimeout(notesSaveRef.current)
@@ -662,6 +649,20 @@ export default function ProblemPage() {
       setRunning(false)
     }
   }, [id, code, elapsedSecs])
+
+  // Keyboard shortcuts: Ctrl+Enter → Run, Ctrl+Shift+Enter → Submit
+  // Must be defined AFTER handleRun and handleSubmit (useCallback is not hoisted)
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        if (e.shiftKey) handleSubmit()
+        else handleRun()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [handleRun, handleSubmit])
 
   const handleStar = async () => {
     await starProblem(id)
