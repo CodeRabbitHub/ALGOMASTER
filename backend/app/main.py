@@ -4,8 +4,10 @@ from contextlib import asynccontextmanager
 from app.config import settings
 from app.database import engine, Base, AsyncSessionLocal
 from app.api import problems, attempts, analytics, ai, admin, auth, settings as settings_api
+from app.api import interview as interview_api
 from app.models.user import User        # ensure User table is registered
 from app.models.settings import AppSetting  # ensure app_settings table is registered
+from app.models import interview as interview_models  # register interview tables with Base.metadata
 from app.api.settings import load_openai_key_from_db
 from app.seed.problems import seed_problems
 from slowapi import _rate_limit_exceeded_handler
@@ -101,6 +103,96 @@ async def lifespan(app: FastAPI):
             END $$
         """))
 
+    # 2b. Interview module tables (idempotent CREATE TABLE IF NOT EXISTS)
+    async with engine.begin() as conn:
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS self_assessments (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                problem_id INTEGER NOT NULL,
+                assessed_at TIMESTAMPTZ DEFAULT now(),
+                pattern_identified VARCHAR(100),
+                time_to_pattern_secs INTEGER,
+                pattern_was_correct BOOLEAN,
+                time_to_first_idea_secs INTEGER,
+                time_to_algorithm_secs INTEGER,
+                total_solve_time_secs INTEGER,
+                wrong_approaches SMALLINT DEFAULT 0,
+                hint_used BOOLEAN DEFAULT FALSE,
+                did_panic BOOLEAN DEFAULT FALSE,
+                complexity_initial_time VARCHAR(30),
+                complexity_final_time VARCHAR(30),
+                complexity_final_space VARCHAR(30),
+                compile_attempts SMALLINT DEFAULT 1,
+                bugs_count SMALLINT DEFAULT 0,
+                bug_categories JSONB DEFAULT '[]',
+                debug_time_secs INTEGER,
+                communication_score SMALLINT,
+                edge_cases_checked JSONB DEFAULT '[]',
+                edge_cases_before_coding BOOLEAN,
+                new_learning TEXT,
+                confidence_after SMALLINT
+            )
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS review_schedule (
+                problem_id INTEGER NOT NULL,
+                user_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                next_review_at TIMESTAMPTZ NOT NULL,
+                interval_days FLOAT DEFAULT 1.0,
+                ease_factor FLOAT DEFAULT 2.5,
+                rep_count INTEGER DEFAULT 0,
+                last_score SMALLINT,
+                last_reviewed_at TIMESTAMPTZ,
+                added_at TIMESTAMPTZ DEFAULT now(),
+                PRIMARY KEY (problem_id, user_id)
+            )
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS mistake_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                problem_id INTEGER,
+                occurred_at TIMESTAMPTZ DEFAULT now(),
+                category VARCHAR(100) NOT NULL,
+                notes TEXT
+            )
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS contest_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                platform VARCHAR(50) DEFAULT 'LeetCode',
+                contest_name VARCHAR(200),
+                contest_date TIMESTAMPTZ NOT NULL,
+                rating INTEGER,
+                rating_change INTEGER,
+                global_rank INTEGER,
+                questions_solved SMALLINT DEFAULT 0,
+                total_questions SMALLINT DEFAULT 4,
+                penalty_mins INTEGER,
+                notes TEXT,
+                created_at TIMESTAMPTZ DEFAULT now()
+            )
+        """))
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS ds_fluency (
+                user_id UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000001',
+                ds_name VARCHAR(100) NOT NULL,
+                rating SMALLINT DEFAULT 1,
+                last_updated TIMESTAMPTZ DEFAULT now(),
+                PRIMARY KEY (user_id, ds_name)
+            )
+        """))
+        # Indices for common queries
+        for idx_sql in [
+            "CREATE INDEX IF NOT EXISTS idx_self_ass_user ON self_assessments(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_self_ass_problem ON self_assessments(problem_id)",
+            "CREATE INDEX IF NOT EXISTS idx_mistake_log_user ON mistake_log(user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_contest_log_user ON contest_log(user_id)",
+        ]:
+            await conn.execute(text(idx_sql))
+
     # 3. Run Alembic in a thread pool to avoid event-loop conflict
     #    (alembic's env.py uses asyncio.run() which cannot be called inside a running loop)
     loop = asyncio.get_event_loop()
@@ -146,6 +238,7 @@ app.include_router(analytics.router)
 app.include_router(ai.router)
 app.include_router(admin.router)
 app.include_router(settings_api.router)
+app.include_router(interview_api.router)
 
 @app.get("/health")
 async def health():

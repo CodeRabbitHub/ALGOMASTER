@@ -9,13 +9,15 @@ import {
   ArrowBack, ArrowForward, Star, StarBorder, PlayArrow, CheckCircle,
   RadioButtonUnchecked, OpenInNew, History, ExpandMore, ExpandLess,
   LightbulbOutlined, Send, AutoAwesome, BugReport, RateReview,
-  RestartAlt, ChevronLeft, ChevronRight,
+  RestartAlt, ChevronLeft, ChevronRight, Psychology,
 } from '@mui/icons-material'
 import Editor from '@monaco-editor/react'
 import {
   getProblem, getProgress, updateProgress, starProblem,
   runCode, getAttemptHistory, getAIInsight, getProblems,
+  getInterviewOptions,
 } from '../api/client'
+import PostSolveModal from '../components/PostSolveModal'
 
 const DIFF_COLOR = { Easy: '#3fb950', Medium: '#d29922', Hard: '#f85149' }
 
@@ -382,7 +384,7 @@ function TestCasePanel({ testCases, result, running }) {
 }
 
 // ── Verdict Screen (shown after Submit) ───────────────────────────────────────
-function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult, onNext, nextProblem }) {
+function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult, onNext, nextProblem, onAssess }) {
   const passed = verdict.test_results?.filter(r => r.passed).length ?? 0
   const total  = verdict.test_results?.length ?? 0
   const allOk  = verdict.is_correct
@@ -506,10 +508,20 @@ function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistak
           </Paper>
         )}
 
-        <Stack direction="row" gap={1} justifyContent="center" mt={1}>
+        <Stack direction="row" gap={1} justifyContent="center" mt={1} flexWrap="wrap">
           <Button variant="outlined" onClick={onClose}>
             Back to Editor
           </Button>
+          {allOk && onAssess && (
+            <Button
+              variant="outlined"
+              startIcon={<Psychology />}
+              onClick={onAssess}
+              sx={{ borderColor: '#d29922', color: '#d29922', '&:hover': { borderColor: '#d29922', bgcolor: '#2b1f07' } }}
+            >
+              Log Performance
+            </Button>
+          )}
           {allOk && nextProblem && (
             <Button
               variant="contained"
@@ -551,6 +563,8 @@ export default function ProblemPage() {
   const [aiHintResult, setAiHintResult] = useState(null)
   const [aiHintOpen, setAiHintOpen] = useState(false)
   const [verdictAiResult, setVerdictAiResult] = useState(null)
+  const [assessOpen, setAssessOpen] = useState(false)
+  const [interviewOptions, setInterviewOptions] = useState({})
 
   // Clear autosave timers on unmount
   useEffect(() => {
@@ -558,6 +572,11 @@ export default function ProblemPage() {
       clearTimeout(notesSaveRef.current)
       clearTimeout(codeAutoSaveRef.current)
     }
+  }, [])
+
+  // Load interview options once (patterns, edge cases, etc.)
+  useEffect(() => {
+    getInterviewOptions().then(setInterviewOptions).catch(() => {})
   }, [])
 
   // Timer + AI — reset when switching problems
@@ -1024,8 +1043,19 @@ export default function ProblemPage() {
               aiResult={verdictAiResult}
               nextProblem={nextProblem}
               onNext={() => nextProblem && navigate(`/problem/${nextProblem.id}`)}
+              onAssess={verdict?.is_correct ? () => setAssessOpen(true) : null}
             />
           )}
+
+          {/* Post-Solve Assessment Modal */}
+          <PostSolveModal
+            open={assessOpen}
+            onClose={() => setAssessOpen(false)}
+            problemId={parseInt(id)}
+            solveTimeSecs={elapsedSecs}
+            options={interviewOptions}
+          />
+
           {/* Toolbar */}
           <Stack direction="row" alignItems="center" gap={1} px={2} py={1}
             sx={{ borderBottom: '1px solid', borderColor: 'divider', bgcolor: '#0d1117', flexShrink: 0 }}>

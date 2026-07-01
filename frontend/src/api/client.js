@@ -72,6 +72,64 @@ export const getAIInsight = (insightType, opts = {}) =>
 export const getAIHistory = (limit = 20) =>
   api.get('/ai/history', { params: { limit } }).then(r => r.data)
 
+// ── Interview / Readiness ─────────────────────────────────────────────────
+export const submitAssessment = (data) =>
+  api.post('/interview/assessment', data).then(r => r.data)
+
+export const listAssessments = (limit = 50) =>
+  api.get('/interview/assessments', { params: { limit } }).then(r => r.data)
+
+export const getAssessmentForProblem = (id) =>
+  api.get(`/interview/assessment/${id}`).then(r => r.data)
+
+export const getInterviewOptions = () =>
+  api.get('/interview/options').then(r => r.data)
+
+export const getInterviewReadiness = () =>
+  api.get('/interview/readiness').then(r => r.data)
+
+export const getPatternStats = () =>
+  api.get('/interview/pattern-stats').then(r => r.data)
+
+export const getReviewsDue = () =>
+  api.get('/interview/reviews/due').then(r => r.data)
+
+export const getAllReviews = () =>
+  api.get('/interview/reviews/all').then(r => r.data)
+
+export const addToReview = (problemId) =>
+  api.post('/interview/reviews/add', { problem_id: problemId }).then(r => r.data)
+
+export const completeReview = (problemId, quality) =>
+  api.post('/interview/reviews/complete', { problem_id: problemId, quality }).then(r => r.data)
+
+export const removeFromReview = (problemId) =>
+  api.delete(`/interview/reviews/${problemId}`).then(r => r.data)
+
+export const listMistakes = (limit = 200) =>
+  api.get('/interview/mistakes', { params: { limit } }).then(r => r.data)
+
+export const getMistakeSummary = () =>
+  api.get('/interview/mistakes/summary').then(r => r.data)
+
+export const logMistake = (data) =>
+  api.post('/interview/mistake', data).then(r => r.data)
+
+export const listContests = () =>
+  api.get('/interview/contests').then(r => r.data)
+
+export const logContest = (data) =>
+  api.post('/interview/contest', data).then(r => r.data)
+
+export const deleteContest = (id) =>
+  api.delete(`/interview/contest/${id}`).then(r => r.data)
+
+export const getDSFluency = () =>
+  api.get('/interview/ds-fluency').then(r => r.data)
+
+export const updateDSFluency = (ratings) =>
+  api.post('/interview/ds-fluency', { ratings }).then(r => r.data)
+
 // ── Settings ─────────────────────────────────────────────────────────────
 export const getOpenAIKeyStatus = () =>
   api.get('/settings/openai-key').then(r => r.data)

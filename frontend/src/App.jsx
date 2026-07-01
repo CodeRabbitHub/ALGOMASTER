@@ -9,6 +9,7 @@ import TrackerPage from './pages/TrackerPage'
 import ProblemPage from './pages/ProblemPage'
 import AnalyticsPage from './pages/AnalyticsPage'
 import SettingsPage from './pages/SettingsPage'
+import InterviewPage from './pages/InterviewPage'
 
 function NotFoundPage() {
   return (
@@ -87,6 +88,7 @@ export default function App() {
             <Route path="/problem/:id" element={<ProtectedLayout><ProblemPage /></ProtectedLayout>} />
             <Route path="/analytics" element={<ProtectedLayout><AnalyticsPage /></ProtectedLayout>} />
             <Route path="/settings" element={<ProtectedLayout><SettingsPage /></ProtectedLayout>} />
+            <Route path="/interview" element={<ProtectedLayout><InterviewPage /></ProtectedLayout>} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>

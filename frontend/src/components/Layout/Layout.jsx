@@ -4,7 +4,7 @@ import {
   Typography, Divider, Avatar, Stack, Tooltip, IconButton, Badge, Chip,
 } from '@mui/material'
 import {
-  FormatListBulleted, BarChart, Code, Settings, Logout, Whatshot,
+  FormatListBulleted, BarChart, Code, Settings, Logout, Whatshot, EmojiEvents,
 } from '@mui/icons-material'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
@@ -14,9 +14,10 @@ import api from '../../api/client'
 const DRAWER_WIDTH = 220
 
 const NAV = [
-  { label: 'Problem Tracker', icon: <FormatListBulleted />, path: '/tracker' },
-  { label: 'Analytics', icon: <BarChart />, path: '/analytics' },
-  { label: 'Settings', icon: <Settings />, path: '/settings' },
+  { label: 'Problem Tracker',     icon: <FormatListBulleted />, path: '/tracker'   },
+  { label: 'Interview Readiness', icon: <EmojiEvents />,        path: '/interview' },
+  { label: 'Analytics',           icon: <BarChart />,           path: '/analytics' },
+  { label: 'Settings',            icon: <Settings />,           path: '/settings'  },
 ]
 
 export default function Layout({ children }) {
