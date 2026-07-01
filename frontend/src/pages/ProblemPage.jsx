@@ -26,9 +26,9 @@ function formatTime(secs) {
   return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
 }
 
-const DEFAULT_CODE = `def solve(nums):
+const DEFAULT_CODE = `def solve(data):
     """
-    Write your solution here.
+    TODO: Implement your solution here.
     Time complexity:  O(?)
     Space complexity: O(?)
     """

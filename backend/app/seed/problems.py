@@ -742,11 +742,44 @@ PROBLEMS = [
 ]
 
 
-def _starter_code(category: str) -> str:
-    return f'''def solve(nums):
+def _func_name(title: str) -> str:
+    """Convert a problem title to a valid snake_case Python function name.
+
+    "Max Consecutive Ones"  → max_consecutive_ones
+    "Two Sum"               → two_sum
+    "3Sum"                  → solve_3sum   (digit prefix → prepend 'solve_')
+    "Pow(x, n)"             → pow_x_n
     """
+    slug = re.sub(r"[^a-z0-9]+", "_", title.lower()).strip("_")
+    if slug and slug[0].isdigit():
+        slug = "solve_" + slug
+    return slug or "solve"
+
+
+def _param_names(input_params: list | None) -> list[str]:
+    """Extract snake_case parameter names from input_params JSON."""
+    if not input_params:
+        return ["data"]
+    names = []
+    for p in input_params:
+        raw = p.get("inputName") or "data"
+        # camelCase → snake_case
+        snake = re.sub(r"([A-Z])", r"_\1", raw).lower().lstrip("_")
+        names.append(snake or raw)
+    return names or ["data"]
+
+
+def _starter_code(title: str, category: str, input_params: list | None = None) -> str:
+    func = _func_name(title)
+    params = ", ".join(_param_names(input_params))
+    return f'''def {func}({params}):
+    """
+    {title}
     Category: {category}
+
     TODO: Implement your solution here.
+    Time complexity:  O(?)
+    Space complexity: O(?)
     """
     pass
 '''
@@ -766,7 +799,9 @@ async def _seed_from_json(db) -> int:
             leetcode_url=item.get("leetcode_url") or None,
             description=item.get("description", ""),
             constraints=item.get("constraints", ""),
-            starter_code=item.get("starter_code") or _starter_code(item["category"]),
+            starter_code=item.get("starter_code") or _starter_code(
+                item["title"], item["category"], item.get("input_params")
+            ),
             test_cases=item.get("test_cases", []),
             hints=item.get("hints", []),
             tags=item.get("tags", []),
@@ -799,7 +834,7 @@ async def _seed_hardcoded(db) -> int:
             category=category,
             leetcode_url=url,
             description=f"Solve the '{title}' problem. See LeetCode for full description.",
-            starter_code=_starter_code(category),
+            starter_code=_starter_code(title, category),
             test_cases=[],
             hints=[],
             tags=[],

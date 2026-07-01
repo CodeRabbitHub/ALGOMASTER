@@ -54,10 +54,21 @@ def _check_equal(actual, expected_str: str) -> bool:
 def _build_test_harness(user_code: str, test_cases: list) -> str:
     """Wrap user code with a test runner."""
     harness = textwrap.dedent(f"""
-import sys, json, traceback
+import sys, json, traceback, types as _types
 
 # ── User code ──────────────────────────────────────────────────────────────
 {user_code}
+
+# ── Find the user's entry-point function ───────────────────────────────────
+# Supports any function name (not just "solve"), so descriptive names work.
+_HARNESS_BUILTINS = {{'_check_equal', '_types'}}
+_user_funcs = [
+    name for name, val in list(globals().items())
+    if isinstance(val, _types.FunctionType)
+    and not name.startswith('_')
+    and name not in _HARNESS_BUILTINS
+]
+_solve_fn = globals()[_user_funcs[0]] if _user_funcs else None
 
 # ── Comparison helper ───────────────────────────────────────────────────────
 def _check_equal(actual, exp_str):
@@ -93,10 +104,10 @@ for i, tc in enumerate(test_cases):
         # if exec produced no bindings it was a plain expression — eval it
         if not local_ns:
             local_ns["_arg"] = eval(inp)
-        # call solve() with args in insertion order
-        if "solve" in dir():
+        # call user function with args in insertion order
+        if _solve_fn is not None:
             args = list(local_ns.values())
-            actual = solve(*args) if args else solve()
+            actual = _solve_fn(*args) if args else _solve_fn()
         else:
             actual = eval(inp)
         passed = _check_equal(actual, expected)
