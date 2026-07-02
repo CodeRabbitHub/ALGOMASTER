@@ -10,7 +10,7 @@ import {
   ArrowBack, ArrowForward, Star, StarBorder, PlayArrow, CheckCircle,
   RadioButtonUnchecked, OpenInNew, History, ExpandMore, ExpandLess,
   LightbulbOutlined, Send, AutoAwesome, BugReport, RateReview,
-  RestartAlt, ChevronLeft, ChevronRight, Psychology,
+  RestartAlt, ChevronLeft, ChevronRight, Psychology, Close,
 } from '@mui/icons-material'
 import Editor from '@monaco-editor/react'
 import {
@@ -398,7 +398,7 @@ function TestCasePanel({ testCases, result, running }) {
 }
 
 // ── Verdict Screen (shown after Submit) ───────────────────────────────────────
-function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult, aiError, onNext, nextProblem, onAssess }) {
+function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult, aiError, onClearAiResult, onNext, nextProblem, onAssess }) {
   // A code-runner outage is not a grade — never show it as Wrong Answer.
   if (verdict.service_error) {
     return (
@@ -494,7 +494,13 @@ function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistak
               </Box>
               <Box flex={1}>
                 <Typography variant="caption" color="text.secondary">Got</Typography>
-                <Box sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#f85149' }}>{r.actual || '(no output)'}</Box>
+                <Box sx={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 12, color: '#f85149' }}>
+                  {r.actual
+                    ? (isFinite(r.actual) && r.actual.includes('.')
+                        ? parseFloat(r.actual).toFixed(5)
+                        : r.actual)
+                    : '(no output)'}
+                </Box>
               </Box>
             </Stack>
           </Paper>
@@ -555,9 +561,14 @@ function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistak
         {/* AI result */}
         {aiResult && (
           <Paper sx={{ p: 2, mt: 1, mb: 2, bgcolor: '#0a0e14', border: '1px solid #21262d', textAlign: 'left' }}>
-            <Stack direction="row" gap={1} alignItems="center" mb={1}>
-              <AutoAwesome sx={{ fontSize: 14, color: '#d29922' }} />
-              <Typography variant="caption" fontWeight={600} color="text.secondary">AI Coach</Typography>
+            <Stack direction="row" alignItems="center" mb={1}>
+              <AutoAwesome sx={{ fontSize: 14, color: '#d29922', mr: 0.5 }} />
+              <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ flexGrow: 1 }}>AI Coach</Typography>
+              <Tooltip title="Close review">
+                <IconButton size="small" onClick={onClearAiResult} sx={{ color: 'text.disabled', p: 0.25 }}>
+                  <Close sx={{ fontSize: 14 }} />
+                </IconButton>
+              </Tooltip>
             </Stack>
             <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7, color: '#c9d1d9' }}>
               {aiResult}
@@ -671,7 +682,9 @@ export default function ProblemPage() {
         setNotes(prog?.notes || '')
         if (prog?.best_solution) setCode(prog.best_solution)
         else if (prob.starter_code) setCode(prob.starter_code)
-        // Load category siblings for prev/next navigation
+        // Start the timer as soon as the problem loads — reading and thinking
+        // time counts, just like in a real interview.
+        setTimerActive(true)
         return getProblems({ category: prob.category, limit: 200 })
       })
       .then(probs => setCategoryProblems(probs || []))
@@ -731,12 +744,6 @@ export default function ProblemPage() {
   const handleCodeChange = useCallback((val) => {
     const newCode = val || ''
     setCode(newCode)
-    // Previously the solve timer only started when the user manually
-    // clicked the timer chip, so it was easy to forget and end up with an
-    // inaccurate (or zero) solve time. Start it automatically on the first
-    // real edit instead — this callback only fires from actual Monaco
-    // onChange events, not from the initial starter/saved-code load.
-    setTimerActive(true)
     clearTimeout(codeAutoSaveRef.current)
     codeAutoSaveRef.current = setTimeout(() => {
       updateProgress(id, { best_solution: newCode }).catch(() => {})
@@ -765,6 +772,7 @@ export default function ProblemPage() {
       setResult(res)
       const prog = await getProgress(id)
       setProgress(prog)
+      loadHistory()
     } catch (err) {
       // The backend now returns a distinct 503 (not a fabricated wrong
       // answer) when the code-runner itself is unreachable — surface that
@@ -784,11 +792,15 @@ export default function ProblemPage() {
     setRunning(true)
     setResult(null)
     setVerdict(null)
+    // Stop and freeze the timer so the verdict screen shows the accurate solve time
+    setTimerActive(false)
+    const capturedSecs = elapsedSecs
     try {
-      const res = await runCode(id, code, 'python', elapsedSecs, 'submit')
+      const res = await runCode(id, code, 'python', capturedSecs, 'submit')
       setVerdict(res)                      // show verdict screen
       const prog = await getProgress(id)
       setProgress(prog)
+      loadHistory()
     } catch (err) {
       setVerdict({
         service_error: true,
@@ -965,6 +977,12 @@ export default function ProblemPage() {
                   {examples.filter(ex => ex.expected_output?.trim()).map((ex, i) => (
                     <ExampleBox key={i} example={ex} index={i} />
                   ))}
+                  {/* Float tolerance note — only shown when expected output looks like a decimal */}
+                  {examples.some(ex => /^\d+\.\d+/.test(ex.expected_output?.trim())) && (
+                    <Typography variant="caption" sx={{ color: 'text.disabled', display: 'block', mt: 1 }}>
+                      Answers within 10⁻⁵ of the expected value are accepted.
+                    </Typography>
+                  )}
                 </Box>
               )}
 
@@ -1154,12 +1172,13 @@ export default function ProblemPage() {
               verdict={verdict}
               problem={problem}
               elapsedSecs={elapsedSecs}
-              onClose={() => { setVerdict(null); setVerdictAiResult(null); setVerdictAiError(null) }}
+              onClose={() => { setVerdict(null); setVerdictAiResult(null); setVerdictAiError(null); setElapsedSecs(0) }}
               onExplainMistake={handleExplainMistake}
               onCodeReview={handleCodeReview}
               aiLoading={aiLoading}
               aiResult={verdictAiResult}
               aiError={verdictAiError}
+              onClearAiResult={() => setVerdictAiResult(null)}
               nextProblem={nextProblem}
               onNext={() => nextProblem && navigate(`/problem/${nextProblem.id}`)}
               onAssess={verdict?.is_correct ? () => setAssessOpen(true) : null}
@@ -1214,7 +1233,7 @@ export default function ProblemPage() {
                 cursor: 'pointer',
               }}
             />
-            <Tooltip title="Run code (Ctrl+Enter)">
+            <Tooltip title="Test against examples — not recorded (Ctrl+Enter)">
               <span>
                 <Button
                   variant="outlined" size="small"
@@ -1226,7 +1245,7 @@ export default function ProblemPage() {
                 </Button>
               </span>
             </Tooltip>
-            <Tooltip title="Submit solution (Ctrl+Shift+Enter)">
+            <Tooltip title="Grade against all test cases — stops timer, saved to history (Ctrl+Shift+Enter)">
               <span>
                 <Button
                   variant="contained" size="small"

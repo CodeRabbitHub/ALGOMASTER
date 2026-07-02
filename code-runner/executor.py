@@ -107,6 +107,8 @@ else:
     _solve_fn = None
 
 # ── Comparison helper ───────────────────────────────────────────────────────
+_FLOAT_TOL = 1e-5  # matches LeetCode's accepted precision for float answers
+
 def _check_equal(actual, exp_str):
     actual_str = str(actual).strip()
     exp = exp_str.strip()
@@ -118,6 +120,10 @@ def _check_equal(actual, exp_str):
         return False
     if actual == exp_val:
         return True
+    # Float tolerance: accept answers within 1e-5 of expected (LeetCode standard)
+    if isinstance(actual, (int, float)) and isinstance(exp_val, (int, float)):
+        if abs(float(actual) - float(exp_val)) <= _FLOAT_TOL:
+            return True
     if isinstance(actual, list) and isinstance(exp_val, list):
         try:
             if sorted(str(x) for x in actual) == sorted(str(x) for x in exp_val):
@@ -146,10 +152,27 @@ for i, tc in enumerate(test_cases):
     try:
         # exec input to build local vars (handles "param = value" assignments)
         local_ns = {{}}
-        exec(inp, {{}}, local_ns)
+        try:
+            exec(inp, {{}}, local_ns)
+        except SyntaxError:
+            # LeetCode-style: "nums = [1,2], k = 4" — comma-joined assignments
+            # that are not valid Python as a single statement. Split on commas
+            # that are immediately followed by a bare name and "=".
+            import re as _re
+            for _part in _re.split(r',\s*(?=\w+\s*=)', inp):
+                try:
+                    exec(_part.strip(), {{}}, local_ns)
+                except Exception:
+                    pass
         # if exec produced no bindings it was a plain expression — eval it
         if not local_ns:
-            local_ns["_arg"] = eval(inp)
+            _evaled = eval(inp)
+            if isinstance(_evaled, tuple):
+                # "arg1, arg2, ..." — each element is a separate function arg
+                for _i, _v in enumerate(_evaled):
+                    local_ns[f"_arg{{_i}}"] = _v
+            else:
+                local_ns["_arg"] = _evaled
         # call user function with args in insertion order
         if _solve_fn is not None:
             args = list(local_ns.values())

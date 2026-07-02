@@ -8,6 +8,21 @@ import {
 import { Code, Visibility, VisibilityOff } from '@mui/icons-material'
 import { useAuth } from '../contexts/AuthContext'
 
+// FastAPI validation errors come back as an array of Pydantic error objects.
+// This extracts a readable string regardless of whether detail is a string,
+// an array (422 validation), or something else entirely.
+function extractError(err, fallback) {
+  const detail = err?.response?.data?.detail
+  if (!detail) return fallback
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map(e => (e.msg || '').replace(/^Value error,\s*/i, '') || JSON.stringify(e))
+      .join('; ')
+  }
+  return fallback
+}
+
 export default function LoginPage() {
   const { login, register } = useAuth()
   const navigate = useNavigate()
@@ -38,7 +53,7 @@ export default function LoginPage() {
       await login(loginEmail, loginPw)
       navigate('/tracker')
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Login failed')
+      setError(extractError(err, 'Login failed'))
     } finally {
       setLoading(false)
     }
@@ -49,12 +64,13 @@ export default function LoginPage() {
     setError('')
     if (regPw !== regPw2) { setError('Passwords do not match'); return }
     if (regPw.length < 8) { setError('Password must be at least 8 characters'); return }
+    if (regPw === regUser) { setError('Password cannot be the same as your username'); return }
     setLoading(true)
     try {
       await register(regEmail, regUser, regPw)
       navigate('/tracker')
     } catch (err) {
-      setError(err?.response?.data?.detail || 'Registration failed')
+      setError(extractError(err, 'Registration failed'))
     } finally {
       setLoading(false)
     }

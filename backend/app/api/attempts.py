@@ -52,6 +52,20 @@ async def run_code(
             detail="Couldn't reach the code runner. Your code was not evaluated — please try again in a moment.",
         )
 
+    # "run" mode is a lightweight scratchpad check — only visible examples
+    # are evaluated and the result is never persisted. Only "submit" creates
+    # an attempt record, updates progress, and appears in history.
+    if req.mode == "run":
+        return RunCodeResponse(
+            stdout=runner_data.get("stdout", ""),
+            stderr=runner_data.get("stderr", ""),
+            is_correct=runner_data.get("is_correct", False),
+            test_results=runner_data.get("test_results", []),
+            execution_time_ms=runner_data.get("exec_time_ms", runner_data.get("execution_time_ms", 0)),
+            attempt_id=None,
+            mode=req.mode,
+        )
+
     count_q = await db.execute(
         select(func.count()).where(
             ProblemAttempt.problem_id == req.problem_id,
@@ -72,7 +86,7 @@ async def run_code(
         code=req.code,
         is_correct=runner_data.get("is_correct", False),
         is_first_attempt=is_first,
-        error_type=_classify_error(runner_data.get("stderr", "")),
+        error_type=None if runner_data.get("is_correct") else _classify_error(runner_data.get("stderr", "")),
         error_message=runner_data.get("stderr", ""),
         stdout=runner_data.get("stdout", ""),
         test_results=runner_data.get("test_results", []),
