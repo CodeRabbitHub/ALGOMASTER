@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   Box, Typography, Stack, Chip, Button, IconButton, Tooltip,
   Paper, CircularProgress, Tabs, Tab, TextField,
-  Alert, LinearProgress, Collapse,
+  Alert, LinearProgress, Collapse, useTheme, useMediaQuery,
+  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions,
 } from '@mui/material'
 import {
   ArrowBack, ArrowForward, Star, StarBorder, PlayArrow, CheckCircle,
@@ -239,8 +240,11 @@ function HintsSection({ hints }) {
 // ── Test Case Panel ───────────────────────────────────────────────────────────
 function TestCasePanel({ testCases, result, running }) {
   const [activeCase, setActiveCase] = useState(0)
-  // Only show test cases that have an expected output
-  const cases = (testCases || []).filter(tc => tc.expected_output?.trim()).slice(0, 10)
+  // The backend only ever sends the public/example test cases here (see
+  // PUBLIC_TEST_CASE_LIMIT in backend/app/schemas/problem.py) — the rest of
+  // the suite is graded server-side and never reaches the client until a
+  // Submit reveals a specific failing case's actual/expected output.
+  const cases = (testCases || []).filter(tc => tc.expected_output?.trim())
   if (!cases.length) return null
 
   // Build a map: test_case index (1-based) → result
@@ -255,6 +259,13 @@ function TestCasePanel({ testCases, result, running }) {
 
   return (
     <Box sx={{ borderTop: '1px solid', borderColor: 'divider', bgcolor: '#0a0e14', flexShrink: 0 }}>
+      {/* Service outage — distinct from a graded run, nothing was scored */}
+      {result?.service_error && (
+        <Alert severity="warning" sx={{ m: 1.5, mb: 0 }}>
+          {result.error_message || 'Could not reach the code runner.'} This run was not scored.
+        </Alert>
+      )}
+
       {/* Header row */}
       <Stack direction="row" alignItems="center" px={1.5} pt={1} pb={0} gap={1}>
         <Typography variant="caption" color="text.secondary" fontWeight={600} sx={{ mr: 1 }}>
@@ -298,13 +309,16 @@ function TestCasePanel({ testCases, result, running }) {
         </Stack>
 
         {/* stdout / error summary pill */}
-        {hasRun && (
+        {hasRun && !result.service_error && (
           <Chip
             size="small"
             label={result.is_correct ? '✓ All Passed' : result.error_type || 'Some Failed'}
             color={result.is_correct ? 'success' : 'error'}
             sx={{ fontSize: 11, height: 22 }}
           />
+        )}
+        {hasRun && result.service_error && (
+          <Chip size="small" label="Service Unavailable" color="warning" sx={{ fontSize: 11, height: 22 }} />
         )}
         {hasRun && result.exec_time_ms !== undefined && (
           <Typography variant="caption" color="text.secondary">{result.exec_time_ms}ms</Typography>
@@ -384,7 +398,34 @@ function TestCasePanel({ testCases, result, running }) {
 }
 
 // ── Verdict Screen (shown after Submit) ───────────────────────────────────────
-function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult, onNext, nextProblem, onAssess }) {
+function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistake, onCodeReview, aiLoading, aiResult, aiError, onNext, nextProblem, onAssess }) {
+  // A code-runner outage is not a grade — never show it as Wrong Answer.
+  if (verdict.service_error) {
+    return (
+      <Box sx={{
+        position: 'absolute', inset: 0, zIndex: 10,
+        bgcolor: 'rgba(0,0,0,0.85)', display: 'flex',
+        alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Paper sx={{
+          p: 4, minWidth: 380, maxWidth: 520,
+          bgcolor: '#0d1117', border: '2px solid #d29922',
+          borderRadius: 2, textAlign: 'center',
+        }}>
+          <Typography sx={{ fontSize: 48, lineHeight: 1, mb: 1 }}>⚠️</Typography>
+          <Typography variant="h5" fontWeight={700} sx={{ color: '#d29922', mb: 1 }}>
+            Couldn't Grade Your Code
+          </Typography>
+          <Typography variant="body2" color="text.secondary" mb={3}>
+            {verdict.error_message || 'The code runner is temporarily unavailable.'}
+            {' '}This was not scored as an attempt — nothing was saved.
+          </Typography>
+          <Button variant="outlined" onClick={onClose}>Back to Editor</Button>
+        </Paper>
+      </Box>
+    )
+  }
+
   const passed = verdict.test_results?.filter(r => r.passed).length ?? 0
   const total  = verdict.test_results?.length ?? 0
   const allOk  = verdict.is_correct
@@ -495,6 +536,22 @@ function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistak
           )}
         </Stack>
 
+        {/* AI error — visually distinct from a real AI response, with a retry */}
+        {aiError && (
+          <Alert
+            severity="error"
+            sx={{ mt: 1, mb: 2, textAlign: 'left' }}
+            action={
+              <Button color="inherit" size="small"
+                onClick={allOk ? onCodeReview : onExplainMistake}>
+                Retry
+              </Button>
+            }
+          >
+            {aiError}
+          </Alert>
+        )}
+
         {/* AI result */}
         {aiResult && (
           <Paper sx={{ p: 2, mt: 1, mb: 2, bgcolor: '#0a0e14', border: '1px solid #21262d', textAlign: 'left' }}>
@@ -542,6 +599,11 @@ function VerdictScreen({ verdict, problem, elapsedSecs, onClose, onExplainMistak
 export default function ProblemPage() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const theme = useTheme()
+  // The fixed 42/58 split pane assumed desktop-width viewports; below `md`
+  // it squeezed both the description and the Monaco editor into unusably
+  // narrow columns. Stack them vertically instead on small screens.
+  const isNarrow = useMediaQuery(theme.breakpoints.down('md'))
   const [problem, setProblem] = useState(null)
   const [progress, setProgress] = useState(null)
   const [code, setCode] = useState(DEFAULT_CODE)
@@ -561,8 +623,10 @@ export default function ProblemPage() {
   // AI Coach state
   const [aiLoading, setAiLoading] = useState(false)
   const [aiHintResult, setAiHintResult] = useState(null)
+  const [aiHintError, setAiHintError] = useState(null)
   const [aiHintOpen, setAiHintOpen] = useState(false)
   const [verdictAiResult, setVerdictAiResult] = useState(null)
+  const [verdictAiError, setVerdictAiError] = useState(null)
   const [assessOpen, setAssessOpen] = useState(false)
   const [interviewOptions, setInterviewOptions] = useState({})
 
@@ -584,8 +648,10 @@ export default function ProblemPage() {
     setElapsedSecs(0)
     setTimerActive(false)
     setAiHintResult(null)
+    setAiHintError(null)
     setAiHintOpen(false)
     setVerdictAiResult(null)
+    setVerdictAiError(null)
   }, [id])
 
   useEffect(() => {
@@ -616,11 +682,12 @@ export default function ProblemPage() {
     setAiLoading(true)
     setAiHintOpen(true)
     setAiHintResult(null)
+    setAiHintError(null)
     try {
       const data = await getAIInsight('hint', { problem_id: parseInt(id) })
       setAiHintResult(data.content)
-    } catch {
-      setAiHintResult('Could not connect to AI service.')
+    } catch (err) {
+      setAiHintError(err?.response?.data?.detail || 'Could not reach the AI coach. Please try again.')
     } finally {
       setAiLoading(false)
     }
@@ -630,6 +697,7 @@ export default function ProblemPage() {
     if (!verdict) return
     setAiLoading(true)
     setVerdictAiResult(null)
+    setVerdictAiError(null)
     try {
       const failedCases = verdict.test_results?.filter(r => !r.passed) || []
       const data = await getAIInsight('mistake_explain', {
@@ -638,8 +706,8 @@ export default function ProblemPage() {
         failed_cases: failedCases,
       })
       setVerdictAiResult(data.content)
-    } catch {
-      setVerdictAiResult('Could not connect to AI service.')
+    } catch (err) {
+      setVerdictAiError(err?.response?.data?.detail || 'Could not reach the AI coach. Please try again.')
     } finally {
       setAiLoading(false)
     }
@@ -648,11 +716,12 @@ export default function ProblemPage() {
   const handleCodeReview = async () => {
     setAiLoading(true)
     setVerdictAiResult(null)
+    setVerdictAiError(null)
     try {
       const data = await getAIInsight('code_review', { problem_id: parseInt(id), code })
       setVerdictAiResult(data.content)
-    } catch {
-      setVerdictAiResult('Could not connect to AI service.')
+    } catch (err) {
+      setVerdictAiError(err?.response?.data?.detail || 'Could not reach the AI coach. Please try again.')
     } finally {
       setAiLoading(false)
     }
@@ -662,6 +731,12 @@ export default function ProblemPage() {
   const handleCodeChange = useCallback((val) => {
     const newCode = val || ''
     setCode(newCode)
+    // Previously the solve timer only started when the user manually
+    // clicked the timer chip, so it was easy to forget and end up with an
+    // inaccurate (or zero) solve time. Start it automatically on the first
+    // real edit instead — this callback only fires from actual Monaco
+    // onChange events, not from the initial starter/saved-code load.
+    setTimerActive(true)
     clearTimeout(codeAutoSaveRef.current)
     codeAutoSaveRef.current = setTimeout(() => {
       updateProgress(id, { best_solution: newCode }).catch(() => {})
@@ -669,13 +744,16 @@ export default function ProblemPage() {
   }, [id])
 
   // Reset code to starter template
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const handleResetCode = useCallback(() => {
-    if (window.confirm('Reset to starter code? Your current code will be lost.')) {
-      const starter = problem?.starter_code || DEFAULT_CODE
-      setCode(starter)
-      clearTimeout(codeAutoSaveRef.current)
-      updateProgress(id, { best_solution: starter }).catch(() => {})
-    }
+    setResetDialogOpen(true)
+  }, [])
+  const confirmResetCode = useCallback(() => {
+    const starter = problem?.starter_code || DEFAULT_CODE
+    setCode(starter)
+    clearTimeout(codeAutoSaveRef.current)
+    updateProgress(id, { best_solution: starter }).catch(() => {})
+    setResetDialogOpen(false)
   }, [problem, id])
 
   const handleRun = useCallback(async () => {
@@ -687,8 +765,16 @@ export default function ProblemPage() {
       setResult(res)
       const prog = await getProgress(id)
       setProgress(prog)
-    } catch {
-      setResult({ error_message: 'Failed to connect to code runner.', is_correct: false })
+    } catch (err) {
+      // The backend now returns a distinct 503 (not a fabricated wrong
+      // answer) when the code-runner itself is unreachable — surface that
+      // as a service-error state instead of a graded result, and don't
+      // let it look like a real Wrong Answer.
+      setResult({
+        service_error: true,
+        error_message: err?.response?.data?.detail || 'Could not reach the code runner. Please try again.',
+        is_correct: false,
+      })
     } finally {
       setRunning(false)
     }
@@ -703,8 +789,12 @@ export default function ProblemPage() {
       setVerdict(res)                      // show verdict screen
       const prog = await getProgress(id)
       setProgress(prog)
-    } catch {
-      setVerdict({ error_message: 'Failed to connect to code runner.', is_correct: false })
+    } catch (err) {
+      setVerdict({
+        service_error: true,
+        error_message: err?.response?.data?.detail || 'Could not reach the code runner. Please try again.',
+        is_correct: false,
+      })
     } finally {
       setRunning(false)
     }
@@ -823,10 +913,25 @@ export default function ProblemPage() {
 
 
       {/* Split pane */}
-      <Box sx={{ display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
+      <Box sx={{
+        display: 'flex',
+        flexDirection: isNarrow ? 'column' : 'row',
+        flexGrow: 1,
+        overflow: isNarrow ? 'auto' : 'hidden',
+      }}>
 
         {/* ── Left: Description ── */}
-        <Box sx={{ width: '42%', borderRight: '1px solid', borderColor: 'divider', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <Box sx={{
+          width: isNarrow ? '100%' : '42%',
+          height: isNarrow ? '50vh' : 'auto',
+          flexShrink: 0,
+          borderRight: isNarrow ? 'none' : '1px solid',
+          borderBottom: isNarrow ? '1px solid' : 'none',
+          borderColor: 'divider',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}>
           <Tabs value={tab} onChange={(_, v) => { setTab(v); if (v === 1) loadHistory() }}
             sx={{ borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
             <Tab label="Description" />
@@ -898,7 +1003,13 @@ export default function ProblemPage() {
                   AI Hints
                 </Button>
                 <Collapse in={aiHintOpen}>
-                  {aiHintResult ? (
+                  {aiHintError ? (
+                    <Alert severity="error" action={
+                      <Button color="inherit" size="small" onClick={handleGetHint}>Retry</Button>
+                    }>
+                      {aiHintError}
+                    </Alert>
+                  ) : aiHintResult ? (
                     <Paper sx={{ p: 2, bgcolor: '#0d1117', border: '1px solid #2b2000' }}>
                       <Stack direction="row" gap={1} alignItems="center" mb={1}>
                         <AutoAwesome sx={{ fontSize: 14, color: '#d29922' }} />
@@ -1029,18 +1140,26 @@ export default function ProblemPage() {
         </Box>
 
         {/* ── Right: Editor + Test Cases ── */}
-        <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'relative' }}>
+        <Box sx={{
+          flex: 1,
+          minHeight: isNarrow ? '70vh' : 'auto',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          position: 'relative',
+        }}>
           {/* Verdict overlay */}
           {verdict && (
             <VerdictScreen
               verdict={verdict}
               problem={problem}
               elapsedSecs={elapsedSecs}
-              onClose={() => { setVerdict(null); setVerdictAiResult(null) }}
+              onClose={() => { setVerdict(null); setVerdictAiResult(null); setVerdictAiError(null) }}
               onExplainMistake={handleExplainMistake}
               onCodeReview={handleCodeReview}
               aiLoading={aiLoading}
               aiResult={verdictAiResult}
+              aiError={verdictAiError}
               nextProblem={nextProblem}
               onNext={() => nextProblem && navigate(`/problem/${nextProblem.id}`)}
               onAssess={verdict?.is_correct ? () => setAssessOpen(true) : null}
@@ -1055,6 +1174,21 @@ export default function ProblemPage() {
             solveTimeSecs={elapsedSecs}
             options={interviewOptions}
           />
+
+          {/* Reset-code confirmation — was a blocking window.confirm() before,
+              which is jarring and unstyled next to the rest of the app. */}
+          <Dialog open={resetDialogOpen} onClose={() => setResetDialogOpen(false)} maxWidth="xs" fullWidth>
+            <DialogTitle>Reset to starter code?</DialogTitle>
+            <DialogContent>
+              <DialogContentText>
+                Your current code will be lost. This can't be undone.
+              </DialogContentText>
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setResetDialogOpen(false)}>Cancel</Button>
+              <Button onClick={confirmResetCode} color="error" variant="contained">Reset</Button>
+            </DialogActions>
+          </Dialog>
 
           {/* Toolbar */}
           <Stack direction="row" alignItems="center" gap={1} px={2} py={1}

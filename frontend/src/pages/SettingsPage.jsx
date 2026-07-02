@@ -6,13 +6,14 @@ import {
 } from '@mui/material'
 import {
   Key, Save, CheckCircle, Info, Delete, Visibility,
-  VisibilityOff, SmartToy,
+  VisibilityOff, SmartToy, Lock,
 } from '@mui/icons-material'
 import { getOpenAIKeyStatus, setOpenAIKey, deleteOpenAIKey } from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function SettingsPage() {
   const { user } = useAuth()
+  const isAdmin = !!user?.is_admin
 
   // ── OpenAI key state ─────────────────────────────────────────────────────
   const [keyStatus, setKeyStatus]   = useState(null)   // { configured, source }
@@ -41,7 +42,7 @@ export default function SettingsPage() {
       const result = await setOpenAIKey(trimmed)
       setKeyStatus(result)
       setKeyInput('')
-      flash('success', 'API key saved and activated — AI features are ready.')
+      flash('success', 'API key saved and activated — AI features are ready for everyone on this instance.')
     } catch (err) {
       flash('error', err?.response?.data?.detail || 'Failed to save key.')
     } finally {
@@ -54,7 +55,7 @@ export default function SettingsPage() {
     try {
       await deleteOpenAIKey()
       setKeyStatus({ configured: false, source: 'none' })
-      flash('info', 'API key removed. AI features are now disabled.')
+      flash('info', 'API key removed. AI features are now disabled for everyone on this instance.')
     } catch (err) {
       flash('error', err?.response?.data?.detail || 'Failed to remove key.')
     } finally {
@@ -87,74 +88,88 @@ export default function SettingsPage() {
           )}
         </Stack>
 
-        <Typography variant="body2" color="text.secondary" mb={2.5}>
-          Required for AI hints, mistake explainer, code review, weekly reports, and study plans.
-          The key is encrypted with AES-256 before storage — it is never stored in plaintext.
+        <Typography variant="body2" color="text.secondary" mb={1}>
+          This key is <strong>shared by every account on this AlgoMaster instance</strong> — it
+          powers AI hints, the mistake explainer, code review, weekly reports, and study plans for
+          all users, not just yours. It's encrypted at rest (Fernet: AES-128-CBC + HMAC-SHA256)
+          before storage — it is never stored in plaintext.
         </Typography>
 
-        {/* Input row */}
-        <Stack direction="row" gap={1} alignItems="flex-start" mb={2}>
-          <TextField
-            fullWidth
-            type={showKey ? 'text' : 'password'}
-            label={keyStatus?.configured ? 'Enter new key to replace' : 'OpenAI API Key'}
-            placeholder="sk-proj-..."
-            value={keyInput}
-            onChange={e => setKeyInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSave()}
-            size="small"
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    size="small"
-                    onClick={() => setShowKey(v => !v)}
-                    edge="end"
-                    tabIndex={-1}
-                  >
-                    {showKey ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
-                  </IconButton>
-                </InputAdornment>
-              ),
-            }}
-          />
-          <Button
-            variant="contained"
-            startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <Save />}
-            onClick={handleSave}
-            disabled={saving || !keyInput.trim()}
-            sx={{ whiteSpace: 'nowrap', minWidth: 100 }}
-          >
-            {saving ? 'Saving…' : 'Save Key'}
-          </Button>
-          {keyStatus?.configured && keyStatus?.source === 'database' && (
-            <Tooltip title="Remove stored key">
-              <span>
-                <IconButton
-                  color="error"
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  size="medium"
-                >
-                  {deleting ? <CircularProgress size={18} color="inherit" /> : <Delete />}
-                </IconButton>
-              </span>
-            </Tooltip>
-          )}
-        </Stack>
-
-        {feedback && (
-          <Alert severity={feedback.severity} sx={{ mb: 1 }}>{feedback.msg}</Alert>
+        {!isAdmin && (
+          <Alert severity="info" icon={<Lock fontSize="small" />} sx={{ mb: 2 }}>
+            Only an admin can add, replace, or remove the shared API key. Ask your admin if AI
+            features aren't working.
+          </Alert>
         )}
 
-        <Alert severity="info" icon={<Key fontSize="small" />}>
-          Get your key at{' '}
-          <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer"
-             style={{ color: 'inherit' }}>
-            platform.openai.com/api-keys
-          </a>.
-          {' '}The key activates immediately — no Docker restart needed.
-        </Alert>
+        {isAdmin && (
+          <>
+            {/* Input row */}
+            <Stack direction="row" gap={1} alignItems="flex-start" mb={2}>
+              <TextField
+                fullWidth
+                type={showKey ? 'text' : 'password'}
+                label={keyStatus?.configured ? 'Enter new key to replace' : 'OpenAI API Key'}
+                placeholder="sk-proj-..."
+                value={keyInput}
+                onChange={e => setKeyInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+                size="small"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        onClick={() => setShowKey(v => !v)}
+                        edge="end"
+                        tabIndex={-1}
+                      >
+                        {showKey ? <VisibilityOff fontSize="small" /> : <Visibility fontSize="small" />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+              <Button
+                variant="contained"
+                startIcon={saving ? <CircularProgress size={14} color="inherit" /> : <Save />}
+                onClick={handleSave}
+                disabled={saving || !keyInput.trim()}
+                sx={{ whiteSpace: 'nowrap', minWidth: 100 }}
+              >
+                {saving ? 'Saving…' : 'Save Key'}
+              </Button>
+              {keyStatus?.configured && keyStatus?.source === 'database' && (
+                <Tooltip title="Remove stored key">
+                  <span>
+                    <IconButton
+                      color="error"
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      size="medium"
+                    >
+                      {deleting ? <CircularProgress size={18} color="inherit" /> : <Delete />}
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              )}
+            </Stack>
+
+            {feedback && (
+              <Alert severity={feedback.severity} sx={{ mb: 1 }}>{feedback.msg}</Alert>
+            )}
+
+            <Alert severity="info" icon={<Key fontSize="small" />}>
+              Get your key at{' '}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer"
+                 style={{ color: 'inherit' }}>
+                platform.openai.com/api-keys
+              </a>.
+              {' '}The key activates immediately — no Docker restart needed. AI calls are rate
+              limited per user (20/hour) to keep usage predictable.
+            </Alert>
+          </>
+        )}
       </Paper>
 
       {/* ── About ────────────────────────────────────────────────────────── */}
@@ -165,7 +180,7 @@ export default function SettingsPage() {
         </Stack>
         <Divider sx={{ mb: 2 }} />
         {[
-          ['Signed in as', `${user?.username} (${user?.email})`],
+          ['Signed in as', `${user?.username} (${user?.email})${isAdmin ? ' · Admin' : ''}`],
           ['Platform', 'AlgoMaster v1.0'],
           ['Problems', '600 across 59 categories'],
           ['Database', 'PostgreSQL + TimescaleDB'],

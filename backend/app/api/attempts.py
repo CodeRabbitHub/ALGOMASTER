@@ -8,7 +8,7 @@ from app.database import get_db
 from app.models.attempt import ProblemAttempt, ErrorPattern
 from app.models.problem import Problem, ProblemProgress
 from app.models.user import User
-from app.schemas.problem import RunCodeRequest, RunCodeResponse
+from app.schemas.problem import RunCodeRequest, RunCodeResponse, PUBLIC_TEST_CASE_LIMIT
 from app.schemas.analytics import AttemptOut
 from app.core.deps import get_current_user
 from app.config import settings
@@ -28,15 +28,29 @@ async def run_code(
         raise HTTPException(status_code=404, detail="Problem not found")
 
     all_cases = problem.test_cases or []
-    cases_to_run = all_cases if req.mode == "submit" else all_cases[:3]
+    cases_to_run = all_cases if req.mode == "submit" else all_cases[:PUBLIC_TEST_CASE_LIMIT]
 
     payload = {"code": req.code, "test_cases": cases_to_run}
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
             resp = await client.post(f"{settings.CODE_RUNNER_URL}/execute", json=payload)
+            resp.raise_for_status()
             runner_data = resp.json()
-    except Exception as e:
-        runner_data = {"stdout": "", "stderr": str(e), "is_correct": False, "test_results": [], "exec_time_ms": 0}
+    except Exception:
+        # An outage/timeout talking to the code-runner is an infrastructure
+        # failure, not a wrong answer. Previously this was silently turned
+        # into a fabricated `is_correct: False` result that got persisted as
+        # a real attempt (and, since it had a non-empty "stderr", also
+        # logged as an ErrorPattern) — permanently polluting error-type and
+        # struggle-index analytics with outage noise, and showing the user
+        # a raw exception message inside what looked like a normal Wrong
+        # Answer verdict. Fail loudly instead: don't write an attempt, don't
+        # touch progress, and return a distinct 503 the frontend can render
+        # as a real "service unavailable" state.
+        raise HTTPException(
+            status_code=503,
+            detail="Couldn't reach the code runner. Your code was not evaluated — please try again in a moment.",
+        )
 
     count_q = await db.execute(
         select(func.count()).where(

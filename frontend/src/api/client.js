@@ -10,18 +10,28 @@ const api = axios.create({
 const _saved = localStorage.getItem('algomaster_token')
 if (_saved) api.defaults.headers.common['Authorization'] = `Bearer ${_saved}`
 
-// Redirect to /login on 401 (with reason so the login page can show a message)
+// On 401, clear the stored session and notify the app so it can redirect
+// via React Router. This file lives outside the React tree, so it can't
+// call useNavigate() directly — it previously used a hard
+// `window.location.href` redirect instead, which threw away all client
+// state and forced a full page (re-)download just to show the login form.
+// Dispatching an event lets AuthProvider (which *is* inside the Router)
+// react with a normal client-side navigation instead.
 api.interceptors.response.use(
   res => res,
   err => {
     if (err?.response?.status === 401 && window.location.pathname !== '/login') {
       localStorage.removeItem('algomaster_token')
       localStorage.removeItem('algomaster_user')
-      window.location.href = '/login?reason=session_expired'
+      window.dispatchEvent(new CustomEvent('algomaster:session-expired'))
     }
     return Promise.reject(err)
   }
 )
+
+// ── Auth ─────────────────────────────────────────────────────────────────
+export const getMe = () =>
+  api.get('/auth/me').then(r => r.data)
 
 // ── Problems ─────────────────────────────────────────────────────────────
 export const getProblems = (params = {}) =>

@@ -178,29 +178,14 @@ CREATE TABLE IF NOT EXISTS topic_mastery (
     PRIMARY KEY (category, user_id)
 );
 
--- ─── CONTINUOUS AGGREGATE: daily_stats ───────────────────────────────────────
--- Auto-refreshed by TimescaleDB every hour from problem_attempts hypertable
-
-CREATE MATERIALIZED VIEW IF NOT EXISTS daily_stats
-WITH (timescaledb.continuous) AS
-SELECT
-    time_bucket('1 day', submitted_at)  AS day,
-    COUNT(*)                            AS total_attempts,
-    COUNT(*) FILTER (WHERE is_correct)  AS solved,
-    COUNT(*) FILTER (WHERE is_first_attempt AND is_correct) AS first_attempt_wins,
-    COUNT(DISTINCT problem_id)          AS problems_touched,
-    SUM(time_spent_secs)                AS total_time_secs,
-    COUNT(*) FILTER (WHERE NOT is_correct) AS errors_count
-FROM problem_attempts
-GROUP BY day
-WITH NO DATA;
-
-SELECT add_continuous_aggregate_policy('daily_stats',
-    start_offset => INTERVAL '30 days',
-    end_offset   => INTERVAL '1 hour',
-    schedule_interval => INTERVAL '1 hour',
-    if_not_exists => TRUE
-);
+-- NOTE: This used to define a `daily_stats` TimescaleDB continuous
+-- aggregate (materialized view over problem_attempts, refreshed hourly).
+-- It's been removed: it grouped by day only (no user_id), so in a
+-- multi-user database it silently mixed every user's attempts into one
+-- global row — not fixable by just adding user_id to the GROUP BY without
+-- a backing hypertable migration, since it's also unused: app/analytics/
+-- engine.py's get_daily_stats() computes daily stats directly from
+-- problem_attempts per its own code comment, and never queried this view.
 
 -- ─── APP SETTINGS TABLE (encrypted key-value store) ─────────────────────────
 

@@ -11,7 +11,13 @@ class RegisterRequest(BaseModel):
     @field_validator('password')
     @classmethod
     def password_strength(cls, v: str) -> str:
-        if v.isdigit() or v.isalpha():
+        # Require at least one letter AND at least one digit. (The previous
+        # check only rejected passwords that were *entirely* digits or
+        # *entirely* letters, so a symbols-only password like "!!!!!!!!"
+        # satisfied it despite containing neither a letter nor a number.)
+        has_letter = any(c.isalpha() for c in v)
+        has_digit = any(c.isdigit() for c in v)
+        if not (has_letter and has_digit):
             raise ValueError('Password must contain both letters and numbers')
         return v
 
@@ -25,11 +31,13 @@ class TokenResponse(BaseModel):
     user_id: str
     username: str
     email: str
+    is_admin: bool = False
 
 class UserOut(BaseModel):
     id: str
     email: str
     username: str
+    is_admin: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}

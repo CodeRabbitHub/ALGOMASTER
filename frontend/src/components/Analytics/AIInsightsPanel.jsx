@@ -22,33 +22,39 @@ export default function AIInsightsPanel() {
   const [history, setHistory] = useState([])
   const [histLoading, setHistLoading] = useState(false)
 
-  const handleGenerate = async (type) => {
+  // Shared runner so a failed request (quick-action or chat) can be retried
+  // with identical arguments without re-typing anything.
+  const runInsight = async (type, opts = {}) => {
     setLoading(true)
     setResult(null)
     try {
-      const data = await getAIInsight(type)
-      setResult({ type, content: data.content, tokens: data.tokens_used })
-    } catch {
-      setResult({ type, content: 'Error: Could not connect to AI service.', tokens: 0 })
+      const data = await getAIInsight(type, opts)
+      setResult({ type, content: data.content, tokens: data.tokens_used, question: opts.message })
+    } catch (err) {
+      // Distinct from a real response — see the `result.error` branch below —
+      // rather than stuffing the failure text into `content` where it would
+      // render identically to genuine AI output.
+      setResult({
+        type, opts, error: true, question: opts.message,
+        message: err?.response?.data?.detail || 'Could not reach the AI coach. Please try again.',
+      })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleChat = async () => {
+  const handleGenerate = (type) => runInsight(type)
+
+  const handleChat = () => {
     if (!chatMsg.trim()) return
-    setLoading(true)
-    setResult(null)
     const msg = chatMsg
     setChatMsg('')
-    try {
-      const data = await getAIInsight('chat', { message: msg })
-      setResult({ type: 'chat', content: data.content, tokens: data.tokens_used, question: msg })
-    } catch {
-      setResult({ type: 'chat', content: 'Error: Could not connect to AI service.', tokens: 0 })
-    } finally {
-      setLoading(false)
-    }
+    runInsight('chat', { message: msg })
+  }
+
+  const handleRetry = () => {
+    if (!result) return
+    runInsight(result.type, result.opts || (result.question ? { message: result.question } : {}))
   }
 
   const loadHistory = async () => {
@@ -139,7 +145,13 @@ export default function AIInsightsPanel() {
                 )}
               </Stack>
               <Divider sx={{ mb: 1.5 }} />
-              {result.content.startsWith('⚠️') ? (
+              {result.error ? (
+                <Alert severity="error" action={
+                  <Button color="inherit" size="small" onClick={handleRetry}>Retry</Button>
+                }>
+                  {result.message}
+                </Alert>
+              ) : result.content.startsWith('⚠️') ? (
                 <Alert severity="warning">{result.content}</Alert>
               ) : (
                 <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.7 }}>

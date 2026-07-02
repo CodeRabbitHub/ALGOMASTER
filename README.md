@@ -16,6 +16,7 @@
 - **Sandboxed code runner** — executes Python in an isolated container with memory and CPU limits
 - **AI coaching** powered by GPT-4o — get hints, mistake explanations, and code reviews on demand
 - **Progress analytics** — streak tracking, topic mastery scores, error pattern breakdowns
+- **Interview readiness tracking** — self-assessments, spaced-repetition review queue, mistake log, contest log, and a composite readiness score (see [Interview Readiness](#-interview-readiness))
 - **Monaco editor** with syntax highlighting, keyboard shortcuts, and per-problem notes
 - **JWT authentication** with rate limiting and first-user admin promotion
 - **Self-hosted** — your data stays on your machine
@@ -206,6 +207,23 @@ Powered by OpenAI GPT-4o. Three modes available from the problem page:
 | **Review my code** | After an accepted solution | Time/space complexity analysis and style suggestions |
 
 Set your API key in **Settings** (stored encrypted in the database) or via `OPENAI_API_KEY` in `.env`.
+
+---
+
+## 🎯 Interview Readiness
+
+A dedicated **Interview Readiness** page (separate from Analytics) tracks the metacognitive and interview-specific signals that raw solve/fail counts miss:
+
+| Feature | What it captures |
+|---|---|
+| **Self-assessment** | After each solve, log which pattern you identified (and how fast), time to first idea / algorithm / total solve, bug count and categories, whether you checked edge cases before coding, and a post-solve confidence rating |
+| **Spaced repetition review queue** | Problems can be added to a review schedule; due dates are computed with the SM-2 algorithm (the same spaced-repetition scheduler used by Anki), driven by a 1–5 quality score you give each time you re-solve |
+| **Mistake log** | Freeform log of recurring mistake categories (e.g. off-by-one, misread constraints, wrong data structure) tied to a problem, so patterns become visible over time |
+| **Contest log** | Track rating, rank, and questions solved per contest (LeetCode/Codeforces-style) to correlate practice with real contest performance |
+| **Data structure fluency** | Self-rated 1–5 fluency per data structure (arrays, heaps, tries, etc.), independent of any specific problem |
+| **Composite readiness score** | Rolls the above into a single score via `GET /interview/readiness`, combining solve breadth, pattern recognition speed, mistake frequency, and review consistency |
+
+Backend endpoints live under `/api/interview/*` (see `backend/app/api/interview.py`); the underlying tables (`self_assessments`, `review_schedule`, `mistake_log`, `contest_log`, `ds_fluency`) are created by Alembic migration `002_interview_readiness_tables.py`.
 
 ---
 

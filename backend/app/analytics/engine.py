@@ -243,8 +243,13 @@ async def _compute_streak(db: AsyncSession, user_id: uuid.UUID):
 
     for day in sorted(days, reverse=True):
         if prev is None:
+            # First (most recent) day processed always starts a streak of
+            # length 1 — previously `cur` stayed at 0 here unless that day
+            # was part of the "currently active" streak, which undercounted
+            # every historical (non-active) streak by one day.
+            cur = 1
             if day >= today - timedelta(days=1):
-                streak = 1; cur = 1
+                streak = 1
         else:
             diff = (prev - day).days
             if diff == 1:

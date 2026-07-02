@@ -4,6 +4,16 @@ Revision ID: 001
 Revises:
 Create Date: 2026-01-01 00:00:00.000000
 
+Note on insight_type_enum: this type doesn't exist on a fresh database (or
+any install seeded from db/init.sql — ai_insights.insight_type has always
+been a plain VARCHAR there, not an enum), so an un-guarded
+`ALTER TYPE insight_type_enum ADD VALUE ...` would abort the whole
+migration with "type does not exist". We check for the type first with a
+plain query and only run the ALTER TYPE if it's actually present.
+(`ALTER TYPE ... ADD VALUE` also cannot be run from inside a PL/pgSQL
+DO block/function — Postgres rejects that outright — so the check has to
+happen as a separate, preceding statement rather than as an exception
+handler wrapped around it.)
 """
 from typing import Sequence, Union
 from alembic import op
@@ -25,9 +35,14 @@ def upgrade() -> None:
     op.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS output_type TEXT DEFAULT ''")
     op.execute("ALTER TABLE problems ADD COLUMN IF NOT EXISTS hints JSONB DEFAULT '[]'")
 
-    # ── insight_type enum additions ───────────────────────────────────────────
-    op.execute("ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'hint'")
-    op.execute("ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'mistake_explain'")
+    # ── insight_type enum additions (only if the legacy enum type exists) ─────
+    bind = op.get_bind()
+    enum_exists = bind.execute(sa.text(
+        "SELECT 1 FROM pg_type WHERE typname = 'insight_type_enum'"
+    )).scalar()
+    if enum_exists:
+        op.execute("ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'hint'")
+        op.execute("ALTER TYPE insight_type_enum ADD VALUE IF NOT EXISTS 'mistake_explain'")
 
     # ── Auth / multi-user column additions ───────────────────────────────────
     sentinel = f"'{SENTINEL}'::uuid"

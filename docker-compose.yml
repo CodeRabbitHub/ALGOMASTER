@@ -11,22 +11,24 @@ services:
         condition: service_healthy
       frontend:
         condition: service_started
+    mem_limit: 64m
+    cpus: "0.25"
     restart: unless-stopped
     networks:
       - algomaster
 
   # ── React Frontend ───────────────────────────────────────────────────────────
+  # Multi-stage build produces a static bundle served by nginx inside the
+  # image itself (see frontend/Dockerfile) — no more bind-mounting source
+  # and running the Vite dev server in "production".
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    environment:
-      - VITE_API_BASE_URL=http://localhost/api
     expose:
-      - "5173"
+      - "80"
+    mem_limit: 128m
+    cpus: "0.5"
     restart: unless-stopped
     networks:
       - algomaster
@@ -58,6 +60,8 @@ services:
       timeout: 5s
       retries: 8
       start_period: 60s
+    mem_limit: 512m
+    cpus: "1.0"
     restart: unless-stopped
     networks:
       - algomaster
@@ -95,13 +99,20 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    # Previously published on 0.0.0.0:5432, exposing Postgres to the host's
+    # network (and, depending on the host firewall, potentially beyond it).
+    # Nothing outside this compose network needs a direct DB connection —
+    # the backend reaches `db` over the internal `algomaster` network — so
+    # this now only binds to localhost, for local `psql`/admin access.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-algomaster} -d ${POSTGRES_DB:-algomaster}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    mem_limit: 1g
+    cpus: "1.0"
     restart: unless-stopped
     networks:
       - algomaster

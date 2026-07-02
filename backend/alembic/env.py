@@ -5,7 +5,7 @@ from alembic import context
 
 # Import all models so their metadata is populated
 from app.database import Base
-from app.models import user, problem, attempt, analytics, settings  # noqa: F401
+from app.models import user, problem, attempt, analytics, settings, interview  # noqa: F401
 from app.config import settings as app_settings
 
 config = context.config

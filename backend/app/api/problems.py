@@ -5,11 +5,42 @@ from typing import List, Optional
 from app.database import get_db
 from app.models.problem import Problem, ProblemProgress
 from app.models.user import User
-from app.schemas.problem import ProblemOut, ProgressOut, ProgressUpdate
+from app.schemas.problem import ProblemOut, ProgressOut, ProgressUpdate, PUBLIC_TEST_CASE_LIMIT
 from app.core.deps import get_current_user
 from sqlalchemy.sql import func
 
 router = APIRouter(prefix="/problems", tags=["problems"])
+
+
+def _public_problem_out(p: Problem) -> ProblemOut:
+    """
+    Build the client-facing representation of a problem, truncating
+    test_cases to the public/example subset. This builds a fresh
+    ProblemOut from individual fields rather than letting FastAPI
+    auto-serialize the ORM object (response_model=ProblemOut with
+    from_attributes) — the latter would ship the full, "hidden" test
+    suite (including every expected output) to the browser. Building a
+    plain schema object (not the ORM instance) also means slicing
+    test_cases here never risks SQLAlchemy treating it as a change to
+    persist back to the database.
+    """
+    return ProblemOut(
+        id=p.id,
+        slug=p.slug,
+        title=p.title,
+        difficulty=p.difficulty.value if hasattr(p.difficulty, "value") else p.difficulty,
+        category=p.category,
+        subcategory=p.subcategory,
+        leetcode_url=p.leetcode_url,
+        description=p.description or "",
+        constraints=p.constraints or "",
+        starter_code=p.starter_code or "",
+        test_cases=(p.test_cases or [])[:PUBLIC_TEST_CASE_LIMIT],
+        hints=p.hints or [],
+        tags=p.tags or [],
+        is_new=p.is_new,
+    )
+
 
 @router.get("", response_model=List[ProblemOut])
 async def list_problems(
@@ -25,7 +56,7 @@ async def list_problems(
         q = q.where(Problem.difficulty == difficulty)
     q = q.order_by(Problem.category, Problem.id)
     result = await db.execute(q)
-    return result.scalars().all()
+    return [_public_problem_out(p) for p in result.scalars().all()]
 
 @router.get("/categories")
 async def list_categories(
@@ -67,7 +98,7 @@ async def get_problem(
     p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(status_code=404, detail="Problem not found")
-    return p
+    return _public_problem_out(p)
 
 @router.get("/{problem_id}/progress", response_model=Optional[ProgressOut])
 async def get_progress(

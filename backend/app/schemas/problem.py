@@ -2,6 +2,14 @@ from pydantic import BaseModel
 from typing import Optional, List, Any
 from datetime import datetime
 
+# Number of test cases exposed to the client as "examples" before the user
+# has attempted the problem, and the number used for the quick "Run" action.
+# The rest of a problem's test suite is graded server-side only (see
+# api/attempts.py) and is never sent to the frontend in ProblemOut — see the
+# audit finding "All test cases are sent to the browser before the user
+# runs any code" for why this boundary exists.
+PUBLIC_TEST_CASE_LIMIT = 3
+
 class ProblemOut(BaseModel):
     id: int
     slug: str

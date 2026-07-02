@@ -8,10 +8,17 @@ from app.database import get_db
 from app.config import settings
 from app.models.settings import AppSetting
 from app.models.user import User
-from app.core.deps import get_current_user
+from app.core.deps import get_current_user, require_admin
 from app.core.encryption import encrypt, decrypt
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+# The OpenAI key is a single, instance-wide setting (see OPENAI_KEY_NAME
+# below) — there is exactly one key for the whole self-hosted install, not
+# one per user. Any authenticated user may check whether AI features are
+# available (GET), but only an admin may set or remove the shared key —
+# otherwise any second account that registers could silently disable (or
+# redirect the cost of) AI coaching for everyone else on the instance.
 
 OPENAI_KEY_NAME = "openai_api_key"
 
@@ -55,7 +62,7 @@ async def get_openai_key_status(
 async def set_openai_key(
     body: OpenAIKeyRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Encrypt and persist the OpenAI API key. Also activates it immediately in memory."""
     key = body.api_key.strip()
@@ -80,7 +87,7 @@ async def set_openai_key(
 @router.delete("/openai-key")
 async def delete_openai_key(
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
     """Remove the stored key from the database."""
     row = await _get_stored_row(db)

@@ -21,6 +21,8 @@ async def get_ai_response(
 ) -> dict:
     if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY.startswith("sk-your"):
         return {
+            "ok": True,
+            "configured": False,
             "content": "⚠️ OpenAI API key not configured. Go to **Settings** to add your key — no restart needed.",
             "tokens_used": 0,
         }
@@ -146,9 +148,21 @@ Weakest topics (by struggle index):
         db.add(insight)
         await db.commit()
 
-        return {"content": content, "tokens_used": tokens, "id": str(insight.id)}
+        return {"ok": True, "content": content, "tokens_used": tokens, "id": str(insight.id)}
     except Exception as e:
         logger.exception(
             "OpenAI call failed: insight_type=%s user_id=%s", insight_type, user_id
         )
-        return {"content": f"AI error: {str(e)}", "tokens_used": 0}
+        # Previously this returned the raw exception text as `content` with
+        # a 200 status, so the frontend rendered it inside the same panel
+        # used for genuine AI responses — a user had no way to tell a real
+        # answer from a stack trace fragment. Signal failure explicitly
+        # (ok: False) so the route can turn it into a proper error response
+        # instead. Never leak str(e) to the client — it can contain request
+        # internals; log it server-side and return a generic message.
+        return {
+            "ok": False,
+            "content": None,
+            "tokens_used": 0,
+            "error": "The AI coach is temporarily unavailable. Please try again in a moment.",
+        }

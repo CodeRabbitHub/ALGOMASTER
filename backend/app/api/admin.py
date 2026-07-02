@@ -127,7 +127,11 @@ async def manual_update_problem(
     """
     result = await db.execute(select(Problem))
     all_problems = result.scalars().all()
-    matched = [p for p in all_problems if slug in (p.leetcode_url or "")]
+    # Previously `slug in (p.leetcode_url or "")` did a loose substring
+    # match, so a slug like "sum" would also match "two-sum",
+    # "subarray-sum", "sum-of-two-integers", etc. — silently overwriting
+    # unrelated problems. Compare against the actual parsed slug instead.
+    matched = [p for p in all_problems if slug_from_url(p.leetcode_url or "") == slug]
     if not matched:
         raise HTTPException(404, f"No problem found with slug '{slug}'")
 
