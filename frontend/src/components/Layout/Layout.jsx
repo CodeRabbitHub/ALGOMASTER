@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import {
   Box, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-  Typography, Divider, Avatar, Stack, Tooltip, IconButton, Badge, Chip,
+  Typography, Divider, Avatar, Stack, Tooltip, IconButton, Chip,
 } from '@mui/material'
 import {
   FormatListBulleted, BarChart, Code, Settings, Logout, Whatshot, EmojiEvents,
@@ -37,9 +37,6 @@ export default function Layout({ children }) {
     navigate('/login')
   }
 
-  const unsolved = sidebarStats
-    ? Math.max(0, sidebarStats.total_problems - sidebarStats.total_solved)
-    : null
   const streak = sidebarStats?.current_streak ?? 0
 
   return (
@@ -68,35 +65,25 @@ export default function Layout({ children }) {
         </Box>
         <Divider />
         <List sx={{ mt: 1 }}>
-          {NAV.map(({ label, icon, path }) => {
-            const showBadge = path === '/tracker' && unsolved !== null && unsolved > 0
-            return (
-              <ListItem key={path} disablePadding>
-                <ListItemButton
-                  selected={pathname.startsWith(path)}
-                  onClick={() => navigate(path)}
-                  sx={{
-                    mx: 1, borderRadius: 1,
-                    '&.Mui-selected': {
-                      bgcolor: 'rgba(88,166,255,0.12)',
-                      color: 'primary.main',
-                      '& .MuiListItemIcon-root': { color: 'primary.main' },
-                    },
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 36 }}>
-                    {showBadge
-                      ? <Badge badgeContent={unsolved > 99 ? '99+' : unsolved}
-                          sx={{ '& .MuiBadge-badge': { bgcolor: '#238636', color: '#fff', fontSize: 10 } }}>
-                          {icon}
-                        </Badge>
-                      : icon}
-                  </ListItemIcon>
-                  <ListItemText primary={label} primaryTypographyProps={{ fontSize: 14 }} />
-                </ListItemButton>
-              </ListItem>
-            )
-          })}
+          {NAV.map(({ label, icon, path }) => (
+            <ListItem key={path} disablePadding>
+              <ListItemButton
+                selected={pathname.startsWith(path)}
+                onClick={() => navigate(path)}
+                sx={{
+                  mx: 1, borderRadius: 1,
+                  '&.Mui-selected': {
+                    bgcolor: 'rgba(88,166,255,0.12)',
+                    color: 'primary.main',
+                    '& .MuiListItemIcon-root': { color: 'primary.main' },
+                  },
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 36 }}>{icon}</ListItemIcon>
+                <ListItemText primary={label} primaryTypographyProps={{ fontSize: 14 }} />
+              </ListItemButton>
+            </ListItem>
+          ))}
         </List>
 
         {/* Spacer */}
