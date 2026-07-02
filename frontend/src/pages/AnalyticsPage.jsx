@@ -1,24 +1,27 @@
 import React, { useEffect, useState } from 'react'
 import {
   Box, Typography, Tabs, Tab, Grid, Paper, Stack, Chip,
-  CircularProgress, Avatar, Skeleton,
+  CircularProgress, Avatar, Skeleton, Drawer, IconButton,
+  ToggleButtonGroup, ToggleButton, Tooltip,
 } from '@mui/material'
 import {
-  EmojiEvents, Whatshot, Speed, BugReport, Psychology,
+  EmojiEvents, Whatshot, Speed, Psychology,
+  AutoAwesome, Close, CalendarViewMonth, ShowChart, BarChart as BarChartIcon,
 } from '@mui/icons-material'
 import {
   LineChart, Line, BarChart, Bar, RadarChart, Radar, PolarGrid,
-  PolarAngleAxis, XAxis, YAxis, Tooltip, CartesianGrid,
+  PolarAngleAxis, XAxis, YAxis, Tooltip as ReTooltip, CartesianGrid,
   ResponsiveContainer, Legend, Cell,
 } from 'recharts'
 import {
   getOverviewStats, getDailyStats, getTopicMastery,
-  getErrorPatterns, getAIInsight, getAIHistory,
+  getErrorPatterns,
 } from '../api/client'
 import api from '../api/client'
 import { useAuth } from '../contexts/AuthContext'
 import GitHubHeatmap from '../components/Analytics/GitHubHeatmap'
 import AIInsightsPanel from '../components/Analytics/AIInsightsPanel'
+import { BugReport } from '@mui/icons-material'
 
 const DIFF_COLORS = { Easy: '#3fb950', Medium: '#d29922', Hard: '#f85149' }
 
@@ -42,11 +45,13 @@ function StatCard({ icon, label, value, sub, color = 'primary.main' }) {
 export default function AnalyticsPage() {
   const { token } = useAuth()
   const [tab, setTab] = useState(0)
+  const [curveView, setCurveView] = useState('progress')   // 'progress' | 'time' | 'activity'
   const [stats, setStats] = useState(null)
   const [daily, setDaily] = useState([])
   const [topics, setTopics] = useState([])
   const [errors, setErrors] = useState([])
   const [loading, setLoading] = useState(true)
+  const [aiOpen, setAiOpen] = useState(false)
 
   useEffect(() => {
     if (!token) return
@@ -98,7 +103,26 @@ export default function AnalyticsPage() {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" fontWeight={700} mb={3}>Learning Analytics</Typography>
+      {/* Header */}
+      <Stack direction="row" alignItems="center" justifyContent="space-between" mb={3}>
+        <Typography variant="h4" fontWeight={700}>Learning Analytics</Typography>
+        <Tooltip title="AI Coach — personalized analysis of your learning data">
+          <Box
+            onClick={() => setAiOpen(true)}
+            sx={{
+              display: 'flex', alignItems: 'center', gap: 1, px: 2, py: 1,
+              borderRadius: 2, cursor: 'pointer', border: '1px solid',
+              borderColor: '#d2992244', bgcolor: '#d2992211',
+              color: '#d29922', fontWeight: 600, fontSize: 14,
+              '&:hover': { bgcolor: '#d2992222' },
+              transition: 'background 0.2s',
+            }}
+          >
+            <AutoAwesome sx={{ fontSize: 18 }} />
+            AI Coach
+          </Box>
+        </Tooltip>
+      </Stack>
 
       {/* KPI cards */}
       {stats && (
@@ -130,81 +154,129 @@ export default function AnalyticsPage() {
         </Grid>
       )}
 
-      {/* Tabs */}
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: '1px solid', borderColor: 'divider' }}>
+      {/* Tabs — 3 tabs */}
+      <Tabs
+        value={tab}
+        onChange={(_, v) => setTab(v)}
+        sx={{ mb: 3, borderBottom: '1px solid', borderColor: 'divider' }}
+      >
         <Tab label="Learning Curve" />
         <Tab label="Topic Mastery" />
-        <Tab label="Activity Heatmap" />
         <Tab label="Error Patterns" />
-        <Tab label="AI Insights" />
       </Tabs>
 
       {/* ── Tab 0: Learning Curve ───────────────────────────────── */}
       {tab === 0 && (
-        <Grid container spacing={2}>
-          <Grid item xs={12}>
+        <Box>
+          {/* Sub-view toggle */}
+          <Stack direction="row" alignItems="center" justifyContent="flex-end" mb={2}>
+            <ToggleButtonGroup
+              value={curveView}
+              exclusive
+              onChange={(_, v) => v && setCurveView(v)}
+              size="small"
+            >
+              <ToggleButton value="progress">
+                <Tooltip title="Progress over time">
+                  <Stack direction="row" alignItems="center" gap={0.5} sx={{ fontSize: 13 }}>
+                    <ShowChart sx={{ fontSize: 16 }} /> Progress
+                  </Stack>
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value="time">
+                <Tooltip title="Time spent per day">
+                  <Stack direction="row" alignItems="center" gap={0.5} sx={{ fontSize: 13 }}>
+                    <BarChartIcon sx={{ fontSize: 16 }} /> Time
+                  </Stack>
+                </Tooltip>
+              </ToggleButton>
+              <ToggleButton value="activity">
+                <Tooltip title="Activity heatmap">
+                  <Stack direction="row" alignItems="center" gap={0.5} sx={{ fontSize: 13 }}>
+                    <CalendarViewMonth sx={{ fontSize: 16 }} /> Activity
+                  </Stack>
+                </Tooltip>
+              </ToggleButton>
+            </ToggleButtonGroup>
+          </Stack>
+
+          {curveView === 'progress' && (
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight={600} mb={2}>
+                    Daily Solves (Last 90 Days)
+                  </Typography>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <LineChart data={daily}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
+                      <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#8b949e' }}
+                        tickFormatter={v => v?.slice(5)} />
+                      <YAxis tick={{ fontSize: 11, fill: '#8b949e' }} />
+                      <ReTooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d' }}
+                        labelStyle={{ color: '#e6edf3' }} />
+                      <Legend />
+                      <Line type="monotone" dataKey="solved" stroke="#3fb950" dot={false} name="Solved" strokeWidth={2} />
+                      <Line type="monotone" dataKey="total_attempts" stroke="#58a6ff" dot={false} name="Attempts" strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle1" fontWeight={600} mb={2}>Difficulty Breakdown</Typography>
+                  {stats && (
+                    <Stack gap={1.5} mt={1}>
+                      {['easy_solved', 'medium_solved', 'hard_solved'].map((key, i) => {
+                        const label = ['Easy', 'Medium', 'Hard'][i]
+                        const totalKey = key.replace('_solved', '_total')
+                        const val = stats[key] || 0
+                        const total = stats[totalKey] || 0
+                        const pct = total ? (val / total) * 100 : 0
+                        return (
+                          <Box key={key}>
+                            <Stack direction="row" justifyContent="space-between" mb={0.5}>
+                              <Typography variant="body2" sx={{ color: DIFF_COLORS[label] }}>{label}</Typography>
+                              <Typography variant="body2" color="text.secondary">{val} / {total}</Typography>
+                            </Stack>
+                            <Box sx={{ height: 8, bgcolor: '#21262d', borderRadius: 4, overflow: 'hidden' }}>
+                              <Box sx={{ height: '100%', width: `${pct}%`, bgcolor: DIFF_COLORS[label], borderRadius: 4, transition: 'width 1s' }} />
+                            </Box>
+                          </Box>
+                        )
+                      })}
+                    </Stack>
+                  )}
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {curveView === 'time' && (
             <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle1" fontWeight={600} mb={2}>
-                Daily Solves (Last 90 Days)
-              </Typography>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={daily}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-                  <XAxis dataKey="day" tick={{ fontSize: 11, fill: '#8b949e' }}
-                    tickFormatter={v => v?.slice(5)} />
-                  <YAxis tick={{ fontSize: 11, fill: '#8b949e' }} />
-                  <Tooltip contentStyle={{ bgcolor: '#161b22', border: '1px solid #30363d' }}
-                    labelStyle={{ color: '#e6edf3' }} />
-                  <Legend />
-                  <Line type="monotone" dataKey="solved" stroke="#3fb950" dot={false} name="Solved" strokeWidth={2} />
-                  <Line type="monotone" dataKey="total_attempts" stroke="#58a6ff" dot={false} name="Attempts" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle1" fontWeight={600} mb={2}>Time Spent (minutes/day)</Typography>
-              <ResponsiveContainer width="100%" height={220}>
+              <Typography variant="subtitle1" fontWeight={600} mb={2}>Time Spent (minutes/day — last 30 days)</Typography>
+              <ResponsiveContainer width="100%" height={320}>
                 <BarChart data={daily.slice(-30)}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                   <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#8b949e' }} tickFormatter={v => v?.slice(5)} />
                   <YAxis tick={{ fontSize: 11, fill: '#8b949e' }} />
-                  <Tooltip contentStyle={{ bgcolor: '#161b22', border: '1px solid #30363d' }}
-                    formatter={v => [`${Math.round(v / 60)} min`]} />
+                  <ReTooltip
+                    contentStyle={{ background: '#161b22', border: '1px solid #30363d' }}
+                    formatter={v => [`${Math.round(v / 60)} min`]}
+                  />
                   <Bar dataKey="total_time_secs" fill="#58a6ff" name="Time" radius={[2, 2, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </Paper>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 2 }}>
-              <Typography variant="subtitle1" fontWeight={600} mb={2}>Difficulty Breakdown</Typography>
-              {stats && (
-                <Stack gap={1.5} mt={1}>
-                  {['easy_solved', 'medium_solved', 'hard_solved'].map((key, i) => {
-                    const label = ['Easy', 'Medium', 'Hard'][i]
-                    const totalKey = key.replace('_solved', '_total')
-                    const val = stats[key] || 0
-                    const total = stats[totalKey] || 0
-                    const pct = total ? (val / total) * 100 : 0
-                    return (
-                      <Box key={key}>
-                        <Stack direction="row" justifyContent="space-between" mb={0.5}>
-                          <Typography variant="body2" sx={{ color: DIFF_COLORS[label] }}>{label}</Typography>
-                          <Typography variant="body2" color="text.secondary">{val} / {total}</Typography>
-                        </Stack>
-                        <Box sx={{ height: 8, bgcolor: '#21262d', borderRadius: 4, overflow: 'hidden' }}>
-                          <Box sx={{ height: '100%', width: `${pct}%`, bgcolor: DIFF_COLORS[label], borderRadius: 4, transition: 'width 1s' }} />
-                        </Box>
-                      </Box>
-                    )
-                  })}
-                </Stack>
-              )}
+          )}
+
+          {curveView === 'activity' && (
+            <Paper sx={{ p: 3 }}>
+              <Typography variant="subtitle1" fontWeight={600} mb={2}>Activity Heatmap</Typography>
+              <GitHubHeatmap data={daily} />
             </Paper>
-          </Grid>
-        </Grid>
+          )}
+        </Box>
       )}
 
       {/* ── Tab 1: Topic Mastery ─────────────────────────────────── */}
@@ -218,7 +290,7 @@ export default function AnalyticsPage() {
                   <PolarGrid stroke="#21262d" />
                   <PolarAngleAxis dataKey="category" tick={{ fontSize: 10, fill: '#8b949e' }} />
                   <Radar name="Mastery" dataKey="mastery" stroke="#58a6ff" fill="#58a6ff" fillOpacity={0.25} />
-                  <Tooltip contentStyle={{ bgcolor: '#161b22', border: '1px solid #30363d' }}
+                  <ReTooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d' }}
                     formatter={v => [`${v.toFixed(0)}%`, 'Mastery']} />
                 </RadarChart>
               </ResponsiveContainer>
@@ -254,16 +326,8 @@ export default function AnalyticsPage() {
         </Grid>
       )}
 
-      {/* ── Tab 2: GitHub Heatmap ────────────────────────────────── */}
+      {/* ── Tab 2: Error Patterns ────────────────────────────────── */}
       {tab === 2 && (
-        <Paper sx={{ p: 3 }}>
-          <Typography variant="subtitle1" fontWeight={600} mb={2}>Activity Heatmap</Typography>
-          <GitHubHeatmap data={daily} />
-        </Paper>
-      )}
-
-      {/* ── Tab 3: Error Patterns ────────────────────────────────── */}
-      {tab === 3 && (
         <Grid container spacing={2}>
           <Grid item xs={12} md={7}>
             <Paper sx={{ p: 2 }}>
@@ -273,7 +337,7 @@ export default function AnalyticsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
                   <XAxis type="number" tick={{ fontSize: 11, fill: '#8b949e' }} />
                   <YAxis dataKey="error_category" type="category" width={130} tick={{ fontSize: 11, fill: '#8b949e' }} />
-                  <Tooltip contentStyle={{ bgcolor: '#161b22', border: '1px solid #30363d' }} />
+                  <ReTooltip contentStyle={{ background: '#161b22', border: '1px solid #30363d' }} />
                   <Bar dataKey="count" fill="#f85149" radius={[0, 4, 4, 0]} name="Count" />
                 </BarChart>
               </ResponsiveContainer>
@@ -299,8 +363,34 @@ export default function AnalyticsPage() {
         </Grid>
       )}
 
-      {/* ── Tab 4: AI Insights ───────────────────────────────────── */}
-      {tab === 4 && <AIInsightsPanel />}
+      {/* ── AI Coach Drawer ──────────────────────────────────────── */}
+      <Drawer
+        anchor="right"
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        PaperProps={{
+          sx: {
+            width: { xs: '100%', sm: 520 },
+            bgcolor: '#0d1117',
+            borderLeft: '1px solid #21262d',
+            p: 3,
+          },
+        }}
+      >
+        <Stack direction="row" alignItems="center" justifyContent="space-between" mb={2}>
+          <Stack direction="row" alignItems="center" gap={1}>
+            <AutoAwesome sx={{ color: '#d29922' }} />
+            <Typography variant="h6" fontWeight={700}>AI Coach</Typography>
+          </Stack>
+          <IconButton onClick={() => setAiOpen(false)} size="small">
+            <Close />
+          </IconButton>
+        </Stack>
+        <Typography variant="body2" color="text.secondary" mb={2.5}>
+          Personalised analysis of your actual solve history, error patterns, and topic mastery.
+        </Typography>
+        <AIInsightsPanel />
+      </Drawer>
     </Box>
   )
 }
