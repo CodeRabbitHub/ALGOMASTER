@@ -6,6 +6,14 @@ const AuthContext = createContext(null)
 const TOKEN_KEY = 'algomaster_token'
 const USER_KEY  = 'algomaster_user'
 
+// UI state keys that are session-scoped — wiped on every login/logout so a
+// new session always starts from a clean default state.
+const SESSION_UI_KEYS = ['algomaster_expanded_cats']
+
+function clearSessionUI() {
+  SESSION_UI_KEYS.forEach(k => localStorage.removeItem(k))
+}
+
 export function AuthProvider({ children }) {
   const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY))
   const [user,  setUser]  = useState(() => {
@@ -68,6 +76,7 @@ export function AuthProvider({ children }) {
       const userObj = { id: user_id, username, email: userEmail, is_admin: !!is_admin }
       localStorage.setItem(TOKEN_KEY, access_token)
       localStorage.setItem(USER_KEY, JSON.stringify(userObj))
+      clearSessionUI()
       // Set header immediately so any fetch triggered by the subsequent
       // navigation fires with auth — don't wait for the useEffect cycle.
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
@@ -88,6 +97,7 @@ export function AuthProvider({ children }) {
       const userObj = { id: user_id, username, email: userEmail, is_admin: !!is_admin }
       localStorage.setItem(TOKEN_KEY, access_token)
       localStorage.setItem(USER_KEY, JSON.stringify(userObj))
+      clearSessionUI()
       api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`
       setToken(access_token)
       setUser(userObj)
@@ -101,6 +111,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
+    clearSessionUI()
     setToken(null)
     setUser(null)
     setSessionExpired(false)
