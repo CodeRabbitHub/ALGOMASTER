@@ -37,7 +37,7 @@ def run_migrations() -> None:
     propagate and stop the app from starting rather than silently serving
     traffic against a schema we're not sure matches the code.
     """
-    ini_path = os.path.join(os.path.dirname(__file__), "..", "..", "alembic.ini")
+    ini_path = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
     cfg = AlembicConfig(os.path.abspath(ini_path))
     alembic_command.upgrade(cfg, "head")
     logger.info("Alembic migrations applied.")
