@@ -1172,7 +1172,7 @@ export default function ProblemPage() {
               verdict={verdict}
               problem={problem}
               elapsedSecs={elapsedSecs}
-              onClose={() => { setVerdict(null); setVerdictAiResult(null); setVerdictAiError(null); setElapsedSecs(0) }}
+              onClose={() => { setVerdict(null); setVerdictAiResult(null); setVerdictAiError(null); setElapsedSecs(0); if (!verdict?.is_correct) setTimerActive(true) }}
               onExplainMistake={handleExplainMistake}
               onCodeReview={handleCodeReview}
               aiLoading={aiLoading}
